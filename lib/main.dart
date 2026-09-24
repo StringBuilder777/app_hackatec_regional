@@ -63,6 +63,7 @@ class CuidadosApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.light,
         home: _PushBridge(
             push: push, notifications: notifications, child: const AuthGate()),
       ),

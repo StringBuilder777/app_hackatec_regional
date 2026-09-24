@@ -44,7 +44,8 @@ class NotificationService {
     tzdata.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation(await _resolveTimeZone()));
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit =
+        AndroidInitializationSettings('@drawable/ic_stat_sense_care');
     const initSettings = InitializationSettings(android: androidInit);
     await _plugin.initialize(
       settings: initSettings,
