@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import '../../models/case_decision_result.dart';
+import '../../models/case_summary.dart';
 import '../../models/telemetry_reading.dart';
 import '../config/app_config.dart';
 
@@ -75,19 +77,24 @@ class SenseCareApiService {
         'Content-Type': 'application/json',
       };
 
+  /// Decodifica el body a un Map, o `{}` si viene vacío o no es JSON válido
+  /// (p. ej. una página de error de API Gateway). Compartido por
+  /// [_decodeOrThrow] y por el manejo especial del 409 en [_decideCase].
+  Map<String, dynamic> _decodeBody(http.Response resp) {
+    if (resp.body.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(resp.body);
+      if (decoded is Map) return decoded.cast<String, dynamic>();
+    } catch (_) {
+      // Se ignora: se usa un mensaje generico segun el status code.
+    }
+    return const {};
+  }
+
   /// Decodifica el body (si lo hay) y lanza la excepción tipada que
   /// corresponda al código de estado. Devuelve el body decodificado en 2xx.
   Map<String, dynamic> _decodeOrThrow(http.Response resp) {
-    Map<String, dynamic> body = const {};
-    if (resp.body.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(resp.body);
-        if (decoded is Map) body = decoded.cast<String, dynamic>();
-      } catch (_) {
-        // El body no es JSON (p. ej. una pagina de error de API Gateway);
-        // se ignora y se usa un mensaje generico segun el status code.
-      }
-    }
+    final body = _decodeBody(resp);
 
     String errorMessage(String fallback) =>
         (body['error'] as String?)?.trim().isNotEmpty == true
@@ -187,6 +194,111 @@ class SenseCareApiService {
         .map((e) => TelemetryReading.fromJson((e as Map).cast<String, dynamic>()))
         .toList();
     return items;
+  }
+
+  /// `POST /me/push-devices` -- registra el token de push (FCM) de este
+  /// dispositivo como un nuevo endpoint de Amazon Pinpoint para el
+  /// usuario autenticado. Devuelve el `endpointId` que hay que guardar para
+  /// poder darlo de baja después con [unregisterPushDevice] (p. ej. al
+  /// cerrar sesión) -- ver `AuthProvider`.
+  Future<String> registerPushDevice({
+    required String platform,
+    required String token,
+    required String idToken,
+  }) async {
+    final resp = await _send(() => _client.post(
+          _uri('/me/push-devices'),
+          headers: _headers(idToken),
+          body: jsonEncode({'platform': platform, 'token': token}),
+        ));
+    final body = _decodeOrThrow(resp);
+    return body['endpointId'] as String? ?? '';
+  }
+
+  /// `DELETE /me/push-devices/{endpointId}` -- da de baja el endpoint (p.
+  /// ej. al cerrar sesión). Lanza [NotFoundException] si ya no existe o no
+  /// pertenece a este usuario; quien llama puede tratarlo como no-op.
+  Future<void> unregisterPushDevice({
+    required String endpointId,
+    required String idToken,
+  }) async {
+    final resp = await _send(() => _client.delete(
+          _uri('/me/push-devices/$endpointId'),
+          headers: _headers(idToken),
+        ));
+    _decodeOrThrow(resp);
+  }
+
+  /// `GET /cases?limit=N` -- casos (alertas) visibles para este usuario.
+  /// Devuelve lista vacía (nunca 403) si el usuario no tiene dispositivos
+  /// emparejados todavía -- ver [CaseSummary].
+  Future<List<CaseSummary>> listCases({
+    required String idToken,
+    int? limit,
+  }) async {
+    final resp = await _send(() => _client.get(
+          _uri('/cases', {if (limit != null) 'limit': '$limit'}),
+          headers: _headers(idToken),
+        ));
+    final body = _decodeOrThrow(resp);
+    final items = (body['items'] as List? ?? const [])
+        .map((e) => CaseSummary.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+    return items;
+  }
+
+  /// `GET /cases/{caseId}/events` -- bitácora de eventos de un caso (filas
+  /// opacas, ver [CaseEvent]). Lanza [ForbiddenException]/[NotFoundException]
+  /// igual que las demás rutas de `/cases`.
+  Future<List<CaseEvent>> getCaseEvents({
+    required String caseId,
+    required String idToken,
+  }) async {
+    final resp = await _send(() => _client.get(
+          _uri('/cases/$caseId/events'),
+          headers: _headers(idToken),
+        ));
+    final body = _decodeOrThrow(resp);
+    final items = (body['items'] as List? ?? const [])
+        .map((e) => CaseEvent.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+    return items;
+  }
+
+  /// `POST /cases/{caseId}/cancel` -- marca el caso como resuelto sin
+  /// escalar. Ver [_decideCase] para el manejo del 409.
+  Future<CaseDecisionResult> cancelCase({
+    required String caseId,
+    required String idToken,
+  }) =>
+      _decideCase('/cases/$caseId/cancel', idToken);
+
+  /// `POST /cases/{caseId}/escalate` -- marca el caso como escalado. Ver
+  /// [_decideCase] para el manejo del 409.
+  Future<CaseDecisionResult> escalateCase({
+    required String caseId,
+    required String idToken,
+  }) =>
+      _decideCase('/cases/$caseId/escalate', idToken);
+
+  /// POST sin body a una ruta de decisión de caso (`/cancel` o
+  /// `/escalate`). Éxito (200) y conflicto (409) devuelven la misma forma
+  /// de body (`{ caseId, alertStatus }`, con `error` extra en el 409) y
+  /// ambos son un resultado *válido* de la operación -- un 409 significa
+  /// "otra vía ya decidió este caso", no un fallo de red ni de permisos.
+  /// Por eso NO se trata como una `ApiException` más (ver
+  /// [CaseDecisionResult] para el razonamiento completo); todo lo demás
+  /// (400/401/403/404/5xx) sigue la ruta normal de [_decodeOrThrow].
+  Future<CaseDecisionResult> _decideCase(String path, String idToken) async {
+    final resp = await _send(() => _client.post(
+          _uri(path),
+          headers: _headers(idToken),
+        ));
+    if (resp.statusCode == 409) {
+      return CaseDecisionResult.fromJson(_decodeBody(resp), conflict: true);
+    }
+    final body = _decodeOrThrow(resp);
+    return CaseDecisionResult.fromJson(body);
   }
 
   void dispose() => _client.close();

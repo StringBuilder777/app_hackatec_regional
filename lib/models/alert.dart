@@ -46,7 +46,12 @@ class Alert {
   final DateTime timestamp;
   final AlertStatus status;
 
-  /// Datos extra del payload (mensaje data-only de SNS/FCM).
+  /// Datos extra del payload (mensaje data-only de SNS/FCM) o del caso tal
+  /// como lo devolvió el backend (`CaseSummary.toJson`, ver
+  /// `AlertsProvider.syncFromBackend`). Cuando trae `caseId`, esta alerta
+  /// representa un caso real del backend y `cancel`/`escalate` lo usan para
+  /// llamar `SenseCareApiService`; si no, es una alerta puramente local
+  /// (`seed-*`/`sim-*` de demo).
   final Map<String, dynamic> data;
 
   /// Llamada automática que hizo la app por esta alerta ("Ana (responsable)")
@@ -72,7 +77,12 @@ class Alert {
   /// Perfil (persona cuidada) al que pertenece la alerta, si el payload lo trae.
   String? get profileId => data['profileId']?.toString();
 
-  Alert copyWith({AlertStatus? status, String? calledTo, DateTime? calledAt}) =>
+  Alert copyWith({
+    AlertStatus? status,
+    Map<String, dynamic>? data,
+    String? calledTo,
+    DateTime? calledAt,
+  }) =>
       Alert(
         id: id,
         title: title,
@@ -81,7 +91,7 @@ class Alert {
         severity: severity,
         timestamp: timestamp,
         status: status ?? this.status,
-        data: data,
+        data: data ?? this.data,
         calledTo: calledTo ?? this.calledTo,
         calledAt: calledAt ?? this.calledAt,
       );

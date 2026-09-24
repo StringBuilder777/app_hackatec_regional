@@ -4,11 +4,34 @@ import 'package:provider/provider.dart';
 
 import '../../models/alert.dart';
 import '../../providers/alerts_provider.dart';
+import '../../providers/auth_provider.dart';
 
 /// Pantalla de Alertas: la última arriba y, encima, filtros (todas / activas /
 /// vistas / canceladas). Incluye "simular alerta" para probar la notificación.
-class AlertsScreen extends StatelessWidget {
+class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
+
+  @override
+  State<AlertsScreen> createState() => _AlertsScreenState();
+}
+
+class _AlertsScreenState extends State<AlertsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Se dispara tras el primer frame para no llamar notifyListeners()
+    // durante el build inicial de este widget (mismo patrón que
+    // `DeviceDetailScreen.startPolling`). Sin sesión con IdToken real (login
+    // mock, o sesión expirada) simplemente no sincroniza: la lista local
+    // sigue mostrándose igual que hoy.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final idToken = context.read<AuthProvider>().idToken;
+      if (idToken != null) {
+        context.read<AlertsProvider>().syncFromBackend(idToken);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -249,7 +272,8 @@ class _EmptyAlerts extends StatelessWidget {
   }
 }
 
-/// Detalle de una alerta con imagen y acciones (marcar vista / cancelar).
+/// Detalle de una alerta con imagen y acciones (marcar vista / escalar /
+/// cancelar).
 class AlertDetailScreen extends StatefulWidget {
   final Alert alert;
   const AlertDetailScreen({super.key, required this.alert});
@@ -260,6 +284,61 @@ class AlertDetailScreen extends StatefulWidget {
 
 class _AlertDetailScreenState extends State<AlertDetailScreen> {
   late Alert _alert = widget.alert;
+
+  /// Núcleo de "Cancelar"/"Escalar": llama a `AlertsProvider.cancel`/
+  /// `escalate`, que ya decide internamente si la alerta es local (demo) o
+  /// un caso real del backend. El resultado tiene tres formas posibles:
+  ///
+  /// - `null` + `decisionError == null`: alerta local, se aplicó de
+  ///   inmediato (sólo posible para "cancelar"; "escalar" en una alerta
+  ///   local no hace nada, ver `AlertsProvider._decide`).
+  /// - `null` + `decisionError != null`: falló la llamada al backend
+  ///   (sesión expirada, sin red, 403/404...) -- se muestra el mensaje y NO
+  ///   se navega, para que el usuario pueda reintentar.
+  /// - No nulo: el backend respondió. Si `conflict` es `true`, la decisión
+  ///   de este usuario NO se aplicó porque el caso ya estaba resuelto por
+  ///   otra vía (otro intento, el `VOICE_CHECKIN` de la Pi, otro cuidador);
+  ///   se muestra el `alertStatus` REAL en vez de fingir que se aplicó lo
+  ///   pedido.
+  Future<void> _handleDecision(BuildContext context,
+      {required bool escalate}) async {
+    final provider = context.read<AlertsProvider>();
+    final result = escalate
+        ? await provider.escalate(_alert.id)
+        : await provider.cancel(_alert.id);
+    if (!context.mounted) return;
+
+    if (result == null) {
+      final err = provider.decisionError;
+      if (err != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(err)));
+        return;
+      }
+      if (!escalate) {
+        setState(() => _alert = _alert.copyWith(status: AlertStatus.canceled));
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
+    final status = result.alertStatus == 'CANCELLED'
+        ? AlertStatus.canceled
+        : AlertStatus.active;
+    setState(() => _alert = _alert.copyWith(status: status));
+
+    if (result.conflict) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            'No se aplicó: el caso ya quedó en estado "${result.alertStatus}".'),
+      ));
+    } else if (escalate) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Alerta escalada.')));
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -336,10 +415,13 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: () {
-                context.read<AlertsProvider>().cancel(_alert.id);
-                Navigator.of(context).pop();
-              },
+              onPressed: () => _handleDecision(context, escalate: true),
+              icon: const Icon(Icons.priority_high),
+              label: const Text('Escalar'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => _handleDecision(context, escalate: false),
               icon: const Icon(Icons.cancel_outlined),
               label: const Text('Cancelar alerta'),
             ),

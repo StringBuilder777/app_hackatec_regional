@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:app_hackatec_regional/core/services/notification_service.dart';
 import 'package:app_hackatec_regional/core/services/phone_call_service.dart';
+import 'package:app_hackatec_regional/core/services/sensecare_api_service.dart';
 import 'package:app_hackatec_regional/core/services/storage_service.dart';
 import 'package:app_hackatec_regional/core/services/voice_service.dart';
 import 'package:app_hackatec_regional/features/alerts/emergency_call_banner.dart';
@@ -204,7 +205,8 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final storage = StorageService(await SharedPreferences.getInstance());
       final notifications = _FakeNotifications();
-      alerts = AlertsProvider(storage, notifications);
+      alerts = AlertsProvider(
+          storage, notifications, SenseCareApiService(), () => null);
       final profiles = ProfilesProvider(storage, notifications);
       for (final p in [profile, ...more]) {
         await profiles.upsert(p);

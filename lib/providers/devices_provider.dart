@@ -30,6 +30,14 @@ class DevicesProvider extends ChangeNotifier {
   bool _pairing = false;
   String? _pairError;
 
+  /// Motivo por el que el último `refreshLatest` del polling no trajo datos
+  /// nuevos (sesión expirada, pairing revocado, sin red, 5xx…). Antes se
+  /// tragaba en silencio; ahora se expone para que la pantalla de detalle
+  /// pueda distinguir "todavía no llegó la siguiente lectura" de "algo
+  /// impide refrescar" -- que se veían idénticos y parecían un dispositivo
+  /// que dejó de actualizarse.
+  String? _pollError;
+
   DevicesProvider(this._api, this._storage, String? Function() tokenProvider)
       : _tokenProvider = tokenProvider {
     _load();
@@ -45,6 +53,7 @@ class DevicesProvider extends ChangeNotifier {
   List<PairedDevice> get devices => List.unmodifiable(_devices);
   bool get pairing => _pairing;
   String? get pairError => _pairError;
+  String? get pollError => _pollError;
 
   void _load() {
     final stored = _storage.readList(_key);
@@ -117,12 +126,18 @@ class DevicesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Pide `GET /devices/{deviceId}/latest` una sola vez. Los errores se
-  /// tragan silenciosamente (el indicador de "hace cuánto" en la UI ya
-  /// refleja que no hay datos frescos); el polling reintenta solo.
+  /// Pide `GET /devices/{deviceId}/latest` una sola vez. Nunca lanza (el
+  /// timer de polling reintenta solo); en error deja el mensaje en
+  /// [pollError] en vez de tragárselo en silencio, para no confundir
+  /// "todavía no llegó la siguiente lectura" con "algo impide refrescar"
+  /// (sesión expirada, pairing revocado, sin red).
   Future<void> refreshLatest(String deviceId) async {
     final token = _tokenProvider();
-    if (token == null || token.isEmpty) return;
+    if (token == null || token.isEmpty) {
+      _pollError = 'Tu sesión expiró. Vuelve a iniciar sesión.';
+      notifyListeners();
+      return;
+    }
     try {
       final result =
           await _api.getDeviceLatest(deviceId: deviceId, idToken: token);
@@ -132,9 +147,17 @@ class DevicesProvider extends ChangeNotifier {
         lastSeenAt: result.lastSeenAt,
         latestTelemetry: result.latestTelemetry,
       );
+      _pollError = null;
+      notifyListeners();
+    } on ForbiddenException {
+      _pollError = 'Perdiste el acceso a este dispositivo. Vuelve a emparejarlo.';
+      notifyListeners();
+    } on ApiException catch (e) {
+      _pollError = e.message;
       notifyListeners();
     } catch (_) {
-      // Silencioso a propósito: ver comentario arriba.
+      _pollError = 'No se pudo actualizar. Reintentando…';
+      notifyListeners();
     }
   }
 
@@ -145,6 +168,7 @@ class DevicesProvider extends ChangeNotifier {
     if (_polledDeviceId == deviceId && _pollTimer != null) return;
     stopPolling();
     _polledDeviceId = deviceId;
+    _pollError = null;
     unawaited(refreshLatest(deviceId));
     _pollTimer = Timer.periodic(_pollInterval, (_) => refreshLatest(deviceId));
   }
