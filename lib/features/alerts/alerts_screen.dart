@@ -52,6 +52,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
       body: Column(
         children: [
           _FilterBar(current: provider.filter, onChanged: provider.setFilter),
+          _CasesStatus(provider: provider),
           Expanded(
             child: alerts.isEmpty
                 ? const _EmptyAlerts()
@@ -93,6 +94,60 @@ Future<void> _simulateAlert(BuildContext context) async {
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Alerta de caída enviada')),
+    );
+  }
+}
+
+/// Estado del polling de casos: "Servidor: N casos · hora" o el error concreto
+/// (sesión vencida, sin acceso, sin red) con cómo resolverlo.
+class _CasesStatus extends StatelessWidget {
+  final AlertsProvider provider;
+  const _CasesStatus({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final error = provider.casesError;
+    if (error == null) {
+      final at = provider.casesSyncedAt;
+      if (at == null) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+        child: Row(children: [
+          Icon(Icons.cloud_done_outlined,
+              size: 14, color: theme.colorScheme.outline),
+          const SizedBox(width: 6),
+          Text(
+              'Servidor: ${provider.casesCount} casos · '
+              '${DateFormat('HH:mm:ss').format(at)}',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.outline)),
+        ]),
+      );
+    }
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      color: theme.colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+        child: Row(children: [
+          Icon(Icons.cloud_off_outlined,
+              color: theme.colorScheme.onErrorContainer),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(error,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onErrorContainer)),
+          ),
+          provider.casesNeedLogin
+              ? TextButton(
+                  onPressed: () => context.read<AuthProvider>().logout(),
+                  child: const Text('Volver a entrar'))
+              : TextButton(
+                  onPressed: provider.refreshCases,
+                  child: const Text('Reintentar')),
+        ]),
+      ),
     );
   }
 }

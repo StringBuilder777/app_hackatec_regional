@@ -44,18 +44,18 @@ class CaseSummary {
   });
 
   factory CaseSummary.fromJson(Map<String, dynamic> j) => CaseSummary(
-        caseId: j['caseId'] as String? ?? '',
-        deviceId: j['deviceId'] as String? ?? '',
-        eventType: j['eventType'] as String? ?? '',
-        anomalyType: j['anomalyType'] as String? ?? '',
-        severity: j['severity'] as String?,
-        status: j['status'] as String?,
-        alertStatus: j['alertStatus'] as String?,
-        notificationStatus: j['notificationStatus'] as String?,
-        humanDecision: j['humanDecision'] as String?,
-        dialStatus: j['dialStatus'] as String?,
-        evidenceStatus: j['evidenceStatus'] as String?,
-        analysisStatus: j['analysisStatus'] as String?,
+        caseId: _str(j['caseId']) ?? '',
+        deviceId: _str(j['deviceId']) ?? '',
+        eventType: _str(j['eventType']) ?? '',
+        anomalyType: _str(j['anomalyType']) ?? '',
+        severity: _str(j['severity']),
+        status: _str(j['status']),
+        alertStatus: _str(j['alertStatus']),
+        notificationStatus: _str(j['notificationStatus']),
+        humanDecision: _str(j['humanDecision']),
+        dialStatus: _str(j['dialStatus']),
+        evidenceStatus: _str(j['evidenceStatus']),
+        analysisStatus: _str(j['analysisStatus']),
         // Sin createdAt no se sabe si es reciente: se toma como viejo para
         // que nunca dispare una llamada automática.
         createdAt: _parseUtc(j['createdAt']) ??
@@ -132,3 +132,7 @@ DateTime? _parseUtc(Object? value) {
   return DateTime.utc(parsed.year, parsed.month, parsed.day, parsed.hour,
       parsed.minute, parsed.second, parsed.millisecond, parsed.microsecond);
 }
+
+/// Texto de un campo del backend; tolera números u otros tipos para que un
+/// campo raro no tire toda la lista de casos.
+String? _str(Object? value) => value?.toString();

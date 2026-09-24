@@ -22,12 +22,14 @@ class _FakeApi implements SenseCareApiService {
   List<CaseSummary> cases = [];
   int calls = 0;
   Completer<void>? hold;
+  Exception? error;
 
   @override
   Future<List<CaseSummary>> listCases(
       {required String idToken, int? limit}) async {
     calls++;
     await hold?.future;
+    if (error != null) throw error!;
     return cases;
   }
 
@@ -187,6 +189,34 @@ void main() {
 
     expect(alerts.byId('c1')!.body, contains('El sistema realizó una llamada'));
     expect(updates, isEmpty);
+  });
+
+  test('un token vencido se ve y pide volver a entrar', () async {
+    final api = _FakeApi()..error = const UnauthorizedException();
+    final alerts = await _provider(api);
+
+    await alerts.refreshCases();
+
+    expect(alerts.casesError, contains('vuelve a entrar'));
+    expect(alerts.casesNeedLogin, isTrue);
+  });
+
+  test('un ciclo correcto muestra cuántos casos trajo', () async {
+    final api = _FakeApi()..cases = [_case(age: const Duration(hours: 2))];
+    final alerts = await _provider(api);
+
+    await alerts.refreshCases();
+
+    expect(alerts.casesError, isNull);
+    expect(alerts.casesCount, 1);
+    expect(alerts.casesSyncedAt, isNotNull);
+  });
+
+  test('un campo con otro tipo no tira la lista de casos', () {
+    final c = CaseSummary.fromJson(
+        {'caseId': 42, 'severity': 'critical', 'dialStatus': 7});
+    expect(c.caseId, '42');
+    expect(c.dialStatus, '7');
   });
 
   testWidgets('consulta cada 5 s y deja de hacerlo al pausar', (tester) async {

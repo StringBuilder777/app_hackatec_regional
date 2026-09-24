@@ -87,8 +87,12 @@ class AuthProvider extends ChangeNotifier {
   /// El IdToken de Cognito de la sesión actual, o `null` si no hay sesión o
   /// el usuario viene del mock local (sin token real). Puede haber expirado
   /// (dura 1 hora) — quien lo use debe manejar un 401 pidiendo re-login.
-  String? get idToken =>
-      (_user?.idToken.isNotEmpty ?? false) ? _user!.idToken : null;
+  /// IdToken vigente; `null` sin sesión del servidor o si ya venció (dura
+  /// 1 h): así la UI pide volver a entrar en vez de recibir 401 en silencio.
+  String? get idToken {
+    final token = _user?.idToken ?? '';
+    return token.isEmpty || _jwtExpired(token) ? null : token;
+  }
 
   void _restore() {
     final raw = _storage.readString(_sessionKey);
@@ -102,6 +106,12 @@ class AuthProvider extends ChangeNotifier {
       // Formato legado (sesión guardada antes de persistir el idToken):
       // el valor crudo es directamente el email.
       _user = AuthUser(raw);
+    }
+    // Una sesión restaurada con el IdToken vencido pide volver a entrar.
+    final token = _user?.idToken ?? '';
+    if (token.isNotEmpty && _jwtExpired(token)) {
+      _user = null;
+      unawaited(_storage.remove(_sessionKey));
     }
     // A propósito NO se re-registra el push aquí: `_restore()` corre en el
     // constructor, antes de que cualquier UI haya visto `isLoggedIn` pasar
@@ -192,5 +202,21 @@ class AuthProvider extends ChangeNotifier {
     } finally {
       await _storage.remove(_pushEndpointKey);
     }
+  }
+}
+
+/// Si el JWT ya venció (campo `exp`); `false` si no se puede leer.
+bool _jwtExpired(String jwt) {
+  final parts = jwt.split('.');
+  if (parts.length != 3) return false;
+  try {
+    final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+    final exp = (payload as Map)['exp'];
+    if (exp is! num) return false;
+    return DateTime.now()
+        .isAfter(DateTime.fromMillisecondsSinceEpoch(exp.toInt() * 1000));
+  } catch (_) {
+    return false;
   }
 }

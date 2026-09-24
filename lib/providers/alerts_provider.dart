@@ -45,6 +45,29 @@ class AlertsProvider extends ChangeNotifier {
   bool _syncing = false;
   bool _resyncRequested = false;
 
+  /// Estado del último ciclo de `GET /cases`, para verlo en Alertas: sin él,
+  /// un token vencido o un dispositivo sin emparejar se ven igual que "no
+  /// hay casos". `null` si el último ciclo salió bien.
+  String? get casesError => _casesError;
+  String? _casesError;
+
+  /// El error se arregla volviendo a iniciar sesión (401 o sin IdToken).
+  bool get casesNeedLogin => _casesNeedLogin;
+  bool _casesNeedLogin = false;
+
+  /// Último ciclo correcto y cuántos casos trajo.
+  DateTime? get casesSyncedAt => _casesSyncedAt;
+  DateTime? _casesSyncedAt;
+  int get casesCount => _casesCount;
+  int _casesCount = 0;
+
+  void _setCasesError(String? message, {bool needLogin = false}) {
+    if (_casesError == message && _casesNeedLogin == needLogin) return;
+    _casesError = message;
+    _casesNeedLogin = needLogin;
+    notifyListeners();
+  }
+
   /// Avisos dentro de la app de casos actualizados ("Caso actualizado: …").
   Stream<String> get caseUpdates => _caseUpdates.stream;
   final _caseUpdates = StreamController<String>.broadcast();
@@ -197,9 +220,27 @@ class AlertsProvider extends ChangeNotifier {
       cases = await _api
           .listCases(idToken: idToken, limit: 20)
           .timeout(_requestTimeout);
-    } catch (_) {
+    } on UnauthorizedException {
+      _setCasesError('Tu sesión expiró: vuelve a entrar para ver los casos.',
+          needLogin: true);
+      return;
+    } on ForbiddenException {
+      _setCasesError('Esta cuenta no tiene acceso a los casos.');
+      return;
+    } on TimeoutException {
+      _setCasesError('El servidor no respondió; reintentando…');
+      return;
+    } on ApiException catch (e) {
+      _setCasesError(e.message);
+      return;
+    } catch (e) {
+      _setCasesError('No se pudieron leer los casos: $e');
       return;
     }
+    _casesSyncedAt = DateTime.now();
+    _casesCount = cases.length;
+    _setCasesError(null);
+    notifyListeners();
     if (cases.isEmpty) return;
 
     final fresh = <Alert>[];
@@ -292,7 +333,11 @@ class AlertsProvider extends ChangeNotifier {
   /// Una consulta de `GET /cases` con el IdToken vigente.
   Future<void> refreshCases() async {
     final token = _tokenProvider();
-    if (token == null || token.isEmpty) return;
+    if (token == null || token.isEmpty) {
+      _setCasesError('Sin sesión del servidor: vuelve a entrar para ver los '
+          'casos.', needLogin: true);
+      return;
+    }
     await syncFromBackend(token);
   }
 
