@@ -1,5 +1,89 @@
 package com.hackatec.app_hackatec_regional
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
+import android.media.AudioManager
+import android.net.Uri
+import android.os.Bundle
+import android.telecom.TelecomManager
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity()
+// Canal "sense_care/phone": la llamada automatica de las alertas (ver
+// PhoneCallService en Dart).
+class MainActivity : FlutterActivity() {
+    private val pendingPermission = mutableListOf<MethodChannel.Result>()
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "requestCallPermission" -> requestCallPermission(result)
+                    "placeCall" -> result.success(placeCall(call.argument<String>("number")))
+                    "isInCall" -> result.success(isInCall())
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun hasCallPermission() =
+        checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+
+    private fun requestCallPermission(result: MethodChannel.Result) {
+        if (hasCallPermission()) {
+            result.success(true)
+            return
+        }
+        pendingPermission.add(result)
+        // Un solo dialogo: las demas solicitudes esperan su respuesta (pedirlo
+        // otra vez haria que Android cancele y todas recibieran false).
+        if (pendingPermission.size == 1) {
+            requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), CALL_PERMISSION_REQUEST)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != CALL_PERMISSION_REQUEST) return
+        val granted = hasCallPermission()
+        pendingPermission.forEach { it.success(granted) }
+        pendingPermission.clear()
+    }
+
+    // Marca directo (sin abrir el marcador) y en altavoz para que la voz de la
+    // app se oiga en la llamada. Android solo deja al usuario marcar numeros
+    // de emergencia: con esos abre el marcador.
+    @SuppressLint("MissingPermission") // Se comprueba en hasCallPermission().
+    private fun placeCall(number: String?): Boolean {
+        if (number.isNullOrBlank() || !hasCallPermission()) return false
+        val telecom = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+        val extras = Bundle().apply {
+            putBoolean(TelecomManager.EXTRA_START_CALL_WITH_SPEAKERPHONE, true)
+        }
+        return try {
+            telecom.placeCall(Uri.fromParts("tel", number, null), extras)
+            true
+        } catch (e: SecurityException) {
+            false
+        }
+    }
+
+    // Sin permisos extra: el modo de audio dice si hay una llamada activa.
+    private fun isInCall(): Boolean {
+        val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return audio.mode == AudioManager.MODE_IN_CALL
+    }
+
+    companion object {
+        private const val CHANNEL = "sense_care/phone"
+        private const val CALL_PERMISSION_REQUEST = 4101
+    }
+}

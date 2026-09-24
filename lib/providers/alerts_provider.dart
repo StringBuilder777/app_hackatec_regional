@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../core/services/notification_service.dart';
@@ -69,24 +71,49 @@ class AlertsProvider extends ChangeNotifier {
     }
   }
 
+  Alert? byId(String id) {
+    for (final a in _alerts) {
+      if (a.id == id) return a;
+    }
+    return null;
+  }
+
+  /// Alertas nuevas según llegan; de aquí cuelga la llamada automática.
+  Stream<Alert> get incoming => _incoming.stream;
+  final _incoming = StreamController<Alert>.broadcast();
+
   /// Punto único de entrada de una alerta (simulada o desde AWS SNS -> FCM):
   /// la guarda y dispara la notificación rica.
   Future<void> receiveIncoming(Alert alert) async {
     _alerts.add(alert);
     notifyListeners();
     await _persist();
+    // Antes de la notificación: la llamada automática no depende de ella.
+    _incoming.add(alert);
     await _notifications.showAlert(alert);
   }
 
-  Future<void> markViewed(String id) => _updateStatus(id, AlertStatus.viewed);
-  Future<void> cancel(String id) => _updateStatus(id, AlertStatus.canceled);
+  Future<void> markViewed(String id) =>
+      _update(id, (a) => a.copyWith(status: AlertStatus.viewed));
+  Future<void> cancel(String id) =>
+      _update(id, (a) => a.copyWith(status: AlertStatus.canceled));
 
-  Future<void> _updateStatus(String id, AlertStatus status) async {
+  /// Deja constancia de la llamada automática que se hizo por la alerta.
+  Future<void> recordCall(String id, String calledTo) => _update(
+      id, (a) => a.copyWith(calledTo: calledTo, calledAt: DateTime.now()));
+
+  Future<void> _update(String id, Alert Function(Alert) change) async {
     final i = _alerts.indexWhere((a) => a.id == id);
     if (i == -1) return;
-    _alerts[i] = _alerts[i].copyWith(status: status);
+    _alerts[i] = change(_alerts[i]);
     notifyListeners();
     await _persist();
+  }
+
+  @override
+  void dispose() {
+    _incoming.close();
+    super.dispose();
   }
 
   Future<void> _persist() =>

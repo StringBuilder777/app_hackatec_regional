@@ -68,6 +68,23 @@ class TimeWindow {
       };
 }
 
+/// Persona a la que la app puede llamar en una emergencia.
+class CareContact {
+  final String name;
+  final String phone;
+
+  const CareContact({this.name = '', this.phone = ''});
+
+  bool get hasPhone => phone.trim().isNotEmpty;
+
+  factory CareContact.fromJson(Map<String, dynamic> j) => CareContact(
+        name: j['name'] as String? ?? '',
+        phone: j['phone'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {'name': name, 'phone': phone};
+}
+
 /// Perfil de configuración de cuidados de un usuario. Reúne sus requerimientos:
 /// medicación (pastillas a cierta hora), sueño, presencia en casa y cuidados.
 class CareProfile {
@@ -79,6 +96,16 @@ class CareProfile {
   final List<String> careNeeds;
   final bool enabled;
 
+  /// Dirección de la persona; se dicta en la llamada de emergencia.
+  final String address;
+
+  /// A quién llama la app si una alerta es grave o nadie la atiende: al
+  /// responsable o, si el usuario de la app es el responsable, a su contacto
+  /// de emergencia.
+  final CareContact responsible;
+  final bool userIsResponsible;
+  final CareContact emergencyContact;
+
   const CareProfile({
     required this.id,
     required this.name,
@@ -87,6 +114,10 @@ class CareProfile {
     this.homeWindow,
     this.careNeeds = const [],
     this.enabled = true,
+    this.address = '',
+    this.responsible = const CareContact(),
+    this.userIsResponsible = false,
+    this.emergencyContact = const CareContact(),
   });
 
   CareProfile copyWith({
@@ -96,6 +127,10 @@ class CareProfile {
     TimeWindow? homeWindow,
     List<String>? careNeeds,
     bool? enabled,
+    String? address,
+    CareContact? responsible,
+    bool? userIsResponsible,
+    CareContact? emergencyContact,
     bool clearSleep = false,
     bool clearHome = false,
   }) =>
@@ -107,6 +142,10 @@ class CareProfile {
         homeWindow: clearHome ? null : (homeWindow ?? this.homeWindow),
         careNeeds: careNeeds ?? this.careNeeds,
         enabled: enabled ?? this.enabled,
+        address: address ?? this.address,
+        responsible: responsible ?? this.responsible,
+        userIsResponsible: userIsResponsible ?? this.userIsResponsible,
+        emergencyContact: emergencyContact ?? this.emergencyContact,
       );
 
   factory CareProfile.fromJson(Map<String, dynamic> j) => CareProfile(
@@ -129,6 +168,16 @@ class CareProfile {
             (j['careNeeds'] as List?)?.map((e) => e.toString()).toList() ??
                 const [],
         enabled: j['enabled'] as bool? ?? true,
+        address: j['address'] as String? ?? '',
+        responsible: j['responsible'] == null
+            ? const CareContact()
+            : CareContact.fromJson(
+                (j['responsible'] as Map).cast<String, dynamic>()),
+        userIsResponsible: j['userIsResponsible'] as bool? ?? false,
+        emergencyContact: j['emergencyContact'] == null
+            ? const CareContact()
+            : CareContact.fromJson(
+                (j['emergencyContact'] as Map).cast<String, dynamic>()),
       );
 
   Map<String, dynamic> toJson() => {
@@ -139,5 +188,9 @@ class CareProfile {
         'homeWindow': homeWindow?.toJson(),
         'careNeeds': careNeeds,
         'enabled': enabled,
+        'address': address,
+        'responsible': responsible.toJson(),
+        'userIsResponsible': userIsResponsible,
+        'emergencyContact': emergencyContact.toJson(),
       };
 }

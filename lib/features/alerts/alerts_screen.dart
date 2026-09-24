@@ -171,9 +171,18 @@ class _AlertCard extends StatelessWidget {
                   Row(children: [
                     _StatusChip(status: alert.status),
                     const SizedBox(width: 8),
-                    Text(_relativeTime(alert.timestamp),
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.colorScheme.outline)),
+                    Flexible(
+                      child: Text(_relativeTime(alert.timestamp),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: theme.colorScheme.outline)),
+                    ),
+                    if (alert.calledTo != null) ...[
+                      const SizedBox(width: 8),
+                      Icon(Icons.phone_forwarded,
+                          size: 14, color: theme.colorScheme.outline),
+                    ],
                   ]),
                 ],
               ),
@@ -256,6 +265,8 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = _alert.severity.color;
+    // La llamada automática puede registrarse con el detalle abierto.
+    final called = context.watch<AlertsProvider>().byId(_alert.id);
     return Scaffold(
       appBar: AppBar(title: Text(_alert.title)),
       body: ListView(
@@ -300,6 +311,18 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
                   .format(_alert.timestamp),
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.outline)),
+          if (called?.calledTo != null) ...[
+            const SizedBox(height: 12),
+            Row(children: [
+              Icon(Icons.phone_forwarded,
+                  size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Llamada automática a ${called!.calledTo}'
+                    '${called.calledAt == null ? '' : ' · ${DateFormat('HH:mm').format(called.calledAt!)}'}'),
+              ),
+            ]),
+          ],
           const SizedBox(height: 24),
           if (_alert.status == AlertStatus.active) ...[
             FilledButton.icon(

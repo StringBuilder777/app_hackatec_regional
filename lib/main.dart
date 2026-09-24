@@ -7,15 +7,19 @@ import 'package:provider/provider.dart';
 import 'app/home_shell.dart';
 import 'app/theme.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/phone_call_service.dart';
 import 'core/services/push_service.dart';
 import 'core/services/sensecare_api_service.dart';
 import 'core/services/storage_service.dart';
+import 'core/services/voice_service.dart';
+import 'features/alerts/emergency_call_banner.dart';
 import 'features/auth/login_screen.dart';
 import 'models/alert.dart';
 import 'providers/alerts_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/cognito_auth_service.dart';
 import 'providers/devices_provider.dart';
+import 'providers/emergency_call_provider.dart';
 import 'providers/profiles_provider.dart';
 
 Future<void> main() async {
@@ -82,6 +86,16 @@ class CuidadosApp extends StatelessWidget {
             return provider;
           },
         ),
+        // No es lazy: debe escuchar las alertas desde el arranque.
+        ChangeNotifierProvider(
+          lazy: false,
+          create: (context) => EmergencyCallProvider(
+            context.read<AlertsProvider>(),
+            context.read<ProfilesProvider>(),
+            PhoneCallService(),
+            VoiceService(),
+          ),
+        ),
       ],
       child: MaterialApp(
         title: 'Alertas Cuidados',
@@ -89,6 +103,7 @@ class CuidadosApp extends StatelessWidget {
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.light,
+        builder: withEmergencyCallBanner,
         home: _PushBridge(
             push: push, notifications: notifications, child: const AuthGate()),
       ),

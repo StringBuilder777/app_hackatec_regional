@@ -41,6 +41,7 @@ Todos los valores como string:
 | `body`     | `Posible caída en la habitación`   |                                         |
 | `imageUrl` | `https://.../foto.jpg`             | opcional; se muestra como BigPicture    |
 | `severity` | `info` / `warning` / `critical`    | `critical` = flash + pantalla completa  |
+| `profileId`| `profile-1727000000000`            | opcional; persona de la alerta para la llamada automática (si falta, el primer perfil activo) |
 
 (Se mapea en `Alert.fromPushData`.)
 

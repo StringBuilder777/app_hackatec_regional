@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/care_profile.dart';
+import '../../models/emergency_call.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/emergency_call_provider.dart';
 import '../../providers/profiles_provider.dart';
 
 /// Pantalla de Perfil: datos del usuario y sus perfiles de configuración de
@@ -143,6 +145,10 @@ class _ProfileCard extends StatelessWidget {
                 if (profile.careNeeds.isNotEmpty)
                   _tag(context, Icons.favorite_outline,
                       '${profile.careNeeds.length} cuidados'),
+                if (profile.enabled)
+                  if (callTargetFor(profile) case final target?)
+                    _tag(context, Icons.phone_in_talk_outlined,
+                        'Llama a ${target.name}'),
               ]),
             ],
           ),
@@ -205,11 +211,17 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _careController = TextEditingController();
   late final TextEditingController _name;
+  late final TextEditingController _address;
+  late final TextEditingController _responsibleName;
+  late final TextEditingController _responsiblePhone;
+  late final TextEditingController _emergencyName;
+  late final TextEditingController _emergencyPhone;
   late List<MedicationReminder> _meds;
   late List<String> _careNeeds;
   TimeWindow? _sleep;
   TimeWindow? _home;
   bool _enabled = true;
+  bool _userIsResponsible = false;
 
   bool get _isEdit => widget.profile != null;
 
@@ -218,16 +230,30 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
     super.initState();
     final p = widget.profile;
     _name = TextEditingController(text: p?.name ?? '');
+    _address = TextEditingController(text: p?.address ?? '');
+    _responsibleName = TextEditingController(text: p?.responsible.name ?? '');
+    _responsiblePhone =
+        TextEditingController(text: p?.responsible.phone ?? '');
+    _emergencyName =
+        TextEditingController(text: p?.emergencyContact.name ?? '');
+    _emergencyPhone =
+        TextEditingController(text: p?.emergencyContact.phone ?? '');
     _meds = [...?p?.medications];
     _careNeeds = [...?p?.careNeeds];
     _sleep = p?.sleepWindow;
     _home = p?.homeWindow;
     _enabled = p?.enabled ?? true;
+    _userIsResponsible = p?.userIsResponsible ?? false;
   }
 
   @override
   void dispose() {
     _name.dispose();
+    _address.dispose();
+    _responsibleName.dispose();
+    _responsiblePhone.dispose();
+    _emergencyName.dispose();
+    _emergencyPhone.dispose();
     _careController.dispose();
     super.dispose();
   }
@@ -269,8 +295,18 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
       homeWindow: _home,
       careNeeds: _careNeeds,
       enabled: _enabled,
+      address: _address.text.trim(),
+      responsible: CareContact(
+          name: _responsibleName.text.trim(),
+          phone: _responsiblePhone.text.trim()),
+      userIsResponsible: _userIsResponsible,
+      emergencyContact: CareContact(
+          name: _emergencyName.text.trim(), phone: _emergencyPhone.text.trim()),
     );
+    final calls = context.read<EmergencyCallProvider>();
     await context.read<ProfilesProvider>().upsert(profile);
+    // El permiso de llamadas se pide aquí, con calma, y no a media alerta.
+    if (callTargetFor(profile) != null) await calls.requestPermission();
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -299,8 +335,8 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Perfil activo'),
-              subtitle:
-                  const Text('Si se pausa, no se programan recordatorios'),
+              subtitle: const Text(
+                  'Si se pausa, no se programan recordatorios ni llamadas'),
               value: _enabled,
               onChanged: (v) => setState(() => _enabled = v),
             ),
@@ -364,6 +400,41 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
                   onPressed: _addCareNeed,
                   icon: const Icon(Icons.add_circle_outline)),
             ]),
+            const Divider(),
+            _sectionTitle(
+                theme, Icons.phone_in_talk_outlined, 'Llamada de emergencia'),
+            Text(
+                'Si una alerta es grave o nadie la atiende, la app marca sola '
+                'en altavoz y una voz explica lo que pasa.',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.outline)),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _address,
+              minLines: 1,
+              maxLines: 2,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Dirección',
+                hintText: 'Calle, número, colonia y ciudad',
+                prefixIcon: Icon(Icons.location_on_outlined),
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Yo soy el responsable'),
+              subtitle: Text(_userIsResponsible
+                  ? 'Se llamará a tu contacto de emergencia'
+                  : 'Se llamará al responsable'),
+              value: _userIsResponsible,
+              onChanged: (v) => setState(() => _userIsResponsible = v),
+            ),
+            if (_userIsResponsible)
+              ..._contactFields(
+                  _emergencyName, _emergencyPhone, 'de tu contacto de emergencia')
+            else
+              ..._contactFields(
+                  _responsibleName, _responsiblePhone, 'del responsable'),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: _save,
@@ -389,6 +460,49 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
         ),
       ]),
     );
+  }
+
+  /// Nombre y teléfono de a quién se llama ("del responsable", "de tu contacto
+  /// de emergencia"). El nombre es obligatorio con teléfono: la voz lo usa.
+  List<Widget> _contactFields(TextEditingController name,
+          TextEditingController phone, String who) =>
+      [
+        TextFormField(
+          controller: name,
+          textCapitalization: TextCapitalization.words,
+          decoration: InputDecoration(
+            labelText: 'Nombre $who',
+            prefixIcon: const Icon(Icons.person_outline),
+          ),
+          validator: (v) =>
+              phone.text.trim().isNotEmpty && (v == null || v.trim().isEmpty)
+                  ? 'Ponle un nombre: la voz lo dice'
+                  : null,
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: phone,
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(
+            labelText: 'Teléfono $who',
+            hintText: 'p. ej. 55 1234 5678',
+            prefixIcon: const Icon(Icons.phone_outlined),
+          ),
+          validator: _validatePhone,
+        ),
+      ];
+
+  /// Opcional. Android no deja que una app marque sola a emergencias (911):
+  /// debe ser el número de una persona.
+  String? _validatePhone(String? v) {
+    final text = (v ?? '').trim();
+    if (text.isEmpty) return null;
+    final digits = text.replaceAll(RegExp(r'\D'), '');
+    if (const {'911', '112', '066'}.contains(digits)) {
+      return 'Android no deja marcar solo a emergencias: usa el de una persona';
+    }
+    if (digits.length < 7) return 'Número incompleto';
+    return null;
   }
 
   Widget _medRow(int i) {

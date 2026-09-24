@@ -81,6 +81,45 @@ caracteres) y pulsa **"Simular alerta"** en la pantalla de Alertas. La activaci�
 del backend real (AWS SNS → FCM) está documentada en
 [`docs/AWS_SNS_FCM.md`](docs/AWS_SNS_FCM.md).
 
+## Llamada automática de emergencia
+
+Si una alerta es grave o nadie la atiende, la app **marca sola desde la SIM, en
+altavoz**, y una **voz** (texto a voz, `flutter_tts`) explica lo que pasa
+(`EmergencyCallProvider`, `lib/providers/emergency_call_provider.dart`).
+
+| Alerta     | Cuándo marca                  | Se cancela con                                  |
+|------------|-------------------------------|-------------------------------------------------|
+| `critical` | a los 15 s (avisa en voz)     | "No llamar" o "Cancelar alerta" (falsa alarma)  |
+| `warning`  | a los 60 s si sigue activa    | "No llamar", tocar su notificación o marcarla como vista |
+| `info`     | nunca                         | —                                               |
+
+- **Dónde se ve:** el aviso con la cuenta regresiva flota arriba de cualquier
+  pantalla. Si el teléfono ya está en una llamada, la siguiente espera a que
+  cuelguen y se puede cancelar mientras espera.
+- **A quién:** cada perfil guarda dirección, responsable y contacto de
+  emergencia. Con "Yo soy el responsable" se llama a tu contacto de emergencia;
+  si no, al responsable. Un perfil pausado no llama.
+- **Qué dice:** al responsable, *"Hola, Ana. Te llamo de Sense Care. Luis tuvo
+  un accidente: se cayó. ¿Puedes llegar para ayudarle? Si no puedes, llama a
+  emergencias al 911."*; al contacto de emergencia, *"Luis Emilio Pérez se
+  cayó. Es una persona adulta mayor y necesita ayuda. La dirección es: …"*.
+  En una advertencia pide comunicarse o ir a revisar, sin mencionar el 911.
+
+Límites de Android (probar en los teléfonos de la demo):
+
+- Una app no puede meter audio dentro de una llamada celular: la voz suena por
+  el altavoz y la otra persona la oye por el micrófono. Sube el volumen.
+- Android no avisa cuándo contestan ni deja oír la respuesta: la voz empieza a
+  los 6 s y repite el mensaje (hasta 5 veces) mientras siga la llamada.
+- Una app no puede marcar sola al 911 (solo abre el marcador): el contacto debe
+  ser el número de una persona.
+- La alerta tiene que llegar con la app al frente y desbloqueada; después la
+  cuenta regresiva y la llamada siguen aunque pase a segundo plano. Un push que
+  llega con la app en segundo plano, bloqueada o cerrada todavía no dispara
+  nada (FCM lo manda al handler de background, que está vacío). Si Android
+  cierra la app durante la cuenta regresiva, esa llamada se pierde.
+- Con dos SIM, elige una SIM predeterminada para llamadas o Android preguntará.
+
 ## Verificación
 
 ```bash
