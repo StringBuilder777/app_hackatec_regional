@@ -76,8 +76,8 @@ Las notificaciones son la parte central. `NotificationService`
 - **flash** del dispositivo y **pantalla completa** en alertas `critical`,
 - **recordatorios de medicación** agendados desde los perfiles.
 
-Para probarlo sin backend: inicia sesión (cualquier correo + contraseña de 4+
-caracteres) y pulsa **"Simular alerta"** en la pantalla de Alertas. La activación
+Para probarlo: inicia sesión con tu usuario y contraseña de Cognito (el
+usuario no tiene que ser un correo) y pulsa **"Simular alerta"** en la pantalla de Alertas. La activación
 del backend real (AWS SNS → FCM) está documentada en
 [`docs/AWS_SNS_FCM.md`](docs/AWS_SNS_FCM.md).
 

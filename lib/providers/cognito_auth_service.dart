@@ -91,9 +91,9 @@ class CognitoAuthService implements AuthService {
     final message = body['message'] as String?;
     switch (type) {
       case 'NotAuthorizedException':
-        return 'Correo o contraseña incorrectos.';
+        return 'Usuario o contraseña incorrectos.';
       case 'UserNotFoundException':
-        return 'No existe una cuenta con ese correo.';
+        return 'No existe una cuenta con ese usuario.';
       case 'UserNotConfirmedException':
         return 'La cuenta no está confirmada. Contacta al administrador.';
       case 'PasswordResetRequiredException':
