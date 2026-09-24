@@ -152,8 +152,9 @@ class DevicesProvider extends ChangeNotifier {
       return;
     }
     try {
-      final result =
-          await _api.getDeviceLatest(deviceId: deviceId, idToken: token);
+      final result = await _api
+          .getDeviceLatest(deviceId: deviceId, idToken: token)
+          .timeout(const Duration(seconds: 10));
       final i = _devices.indexWhere((d) => d.deviceId == deviceId);
       if (i == -1) return;
       _devices[i] = _devices[i].copyWith(

@@ -38,8 +38,12 @@ class AlertsProvider extends ChangeNotifier {
   /// Un caso nuevo más viejo que esto entra sin notificación ni llamada.
   static const _freshCase = Duration(minutes: 10);
 
+  /// Tope por petición: una conexión colgada no debe congelar el polling.
+  static const _requestTimeout = Duration(seconds: 10);
+
   Timer? _pollTimer;
   bool _syncing = false;
+  bool _resyncRequested = false;
 
   /// Avisos dentro de la app de casos actualizados ("Caso actualizado: …").
   Stream<String> get caseUpdates => _caseUpdates.stream;
@@ -169,11 +173,19 @@ class AlertsProvider extends ChangeNotifier {
   /// próximo intento de sync lo resuelve; no hay UI esperando este `Future`
   /// de forma síncrona como para necesitar propagar el error.
   Future<void> syncFromBackend(String idToken) async {
-    // Una sola petición a la vez: si el ciclo previo no terminó, se salta.
-    if (idToken.isEmpty || _syncing) return;
+    if (idToken.isEmpty) return;
+    // Una sola petición a la vez; si llega otra (p. ej. tras decidir) con un
+    // ciclo en vuelo, se repite al terminar en vez de perderse.
+    if (_syncing) {
+      _resyncRequested = true;
+      return;
+    }
     _syncing = true;
     try {
-      await _syncCases(idToken);
+      do {
+        _resyncRequested = false;
+        await _syncCases(idToken);
+      } while (_resyncRequested);
     } finally {
       _syncing = false;
     }
@@ -182,7 +194,9 @@ class AlertsProvider extends ChangeNotifier {
   Future<void> _syncCases(String idToken) async {
     List<CaseSummary> cases;
     try {
-      cases = await _api.listCases(idToken: idToken, limit: 20);
+      cases = await _api
+          .listCases(idToken: idToken, limit: 20)
+          .timeout(_requestTimeout);
     } catch (_) {
       return;
     }
@@ -198,7 +212,7 @@ class AlertsProvider extends ChangeNotifier {
         // solo si es reciente y sigue abierto; al abrir la app o emparejar,
         // los casos viejos entran callados.
         if (!c.isCancelled &&
-            DateTime.now().difference(c.createdAt) < _freshCase) {
+            DateTime.now().difference(c.createdAt).abs() < _freshCase) {
           fresh.add(incoming);
         } else {
           _alerts.add(incoming);
@@ -221,7 +235,16 @@ class AlertsProvider extends ChangeNotifier {
         calledAt: current.calledAt,
       );
       changed = true;
-      _caseUpdates.add('Caso actualizado: ${incoming.title} · ${_whatChanged(c)}');
+      // Sin aviso si el caso lo guardó una versión anterior de la app (sin
+      // los campos del contrato) o si es el eco de la decisión de este
+      // mismo usuario (`_applyDecision` ya la dejó en `alertStatus`).
+      final legacy = !current.data.containsKey('humanDecision');
+      final ownDecision =
+          c.decision != null && current.data['alertStatus'] == c.decision;
+      if (!legacy && !ownDecision) {
+        _caseUpdates
+            .add('Caso actualizado: ${incoming.title} · ${_whatChanged(c)}');
+      }
     }
     if (changed) {
       notifyListeners();
@@ -274,14 +297,16 @@ class AlertsProvider extends ChangeNotifier {
   }
 
   /// Línea de tiempo del caso (`GET /cases/{id}/events`): se pide al abrir
-  /// el detalle, no en cada ciclo. Vacía si falla (el detalle no se traba).
-  Future<List<CaseEvent>> caseEvents(String caseId) async {
+  /// el detalle, no en cada ciclo. `null` si falla (el detalle no se traba).
+  Future<List<CaseEvent>?> caseEvents(String caseId) async {
     final token = _tokenProvider();
-    if (token == null || token.isEmpty) return const [];
+    if (token == null || token.isEmpty) return null;
     try {
-      return await _api.getCaseEvents(caseId: caseId, idToken: token);
+      return await _api
+          .getCaseEvents(caseId: caseId, idToken: token)
+          .timeout(_requestTimeout);
     } catch (_) {
-      return const [];
+      return null;
     }
   }
 

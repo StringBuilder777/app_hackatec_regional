@@ -36,7 +36,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _caseUpdates = _alerts.caseUpdates.listen((message) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
     });
   }
 

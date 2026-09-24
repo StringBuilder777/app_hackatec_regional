@@ -56,11 +56,11 @@ class CaseSummary {
         dialStatus: j['dialStatus'] as String?,
         evidenceStatus: j['evidenceStatus'] as String?,
         analysisStatus: j['analysisStatus'] as String?,
-        createdAt:
-            DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
-        updatedAt: j['updatedAt'] == null
-            ? null
-            : DateTime.tryParse(j['updatedAt'] as String),
+        // Sin createdAt no se sabe si es reciente: se toma como viejo para
+        // que nunca dispare una llamada automática.
+        createdAt: _parseUtc(j['createdAt']) ??
+            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+        updatedAt: _parseUtc(j['updatedAt']),
       );
 
   /// Decisión vigente: `humanDecision` (contrato actual) o `alertStatus`.
@@ -118,4 +118,17 @@ class CaseEvent {
       raw: j,
     );
   }
+}
+
+/// ISO-8601 del backend. Sin "Z" ni offset se toma como UTC (p. ej.
+/// `datetime.utcnow().isoformat()` de Python): leído como hora local, un caso
+/// parecería de otra hora y podría contarse como nuevo.
+DateTime? _parseUtc(Object? value) {
+  if (value is! String) return null;
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null || parsed.isUtc) return parsed;
+  final hasOffset = RegExp(r'([zZ]|[+-]\d{2}(:?\d{2})?)$').hasMatch(value);
+  if (hasOffset) return parsed;
+  return DateTime.utc(parsed.year, parsed.month, parsed.day, parsed.hour,
+      parsed.minute, parsed.second, parsed.millisecond, parsed.microsecond);
 }

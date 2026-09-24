@@ -271,7 +271,7 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
 
   /// Línea de tiempo del caso (`GET /cases/{id}/events`): se pide al abrir
   /// el detalle y tras decidir, no en cada ciclo de polling.
-  Future<List<CaseEvent>>? _events;
+  Future<List<CaseEvent>?>? _events;
 
   @override
   void initState() {
@@ -346,19 +346,20 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = _alert.severity.color;
-    // La llamada automática puede registrarse con el detalle abierto.
-    final called = context.watch<AlertsProvider>().byId(_alert.id);
+    // Lo que traiga el polling (cancelado por otra vía, dialStatus, la
+    // llamada automática) se ve con el detalle abierto.
+    final alert = context.watch<AlertsProvider>().byId(_alert.id) ?? _alert;
+    final color = alert.severity.color;
     return Scaffold(
-      appBar: AppBar(title: Text(_alert.title)),
+      appBar: AppBar(title: Text(alert.title)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (_alert.hasImage)
+          if (alert.hasImage)
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Image.network(
-                _alert.imageUrl!,
+                alert.imageUrl!,
                 height: 200,
                 width: double.infinity,
                 fit: BoxFit.cover,
@@ -377,31 +378,31 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
             ),
           const SizedBox(height: 16),
           Row(children: [
-            Icon(_alert.severity.icon, color: color),
+            Icon(alert.severity.icon, color: color),
             const SizedBox(width: 8),
-            Text(_alert.severity.label,
+            Text(alert.severity.label,
                 style: theme.textTheme.titleMedium
                     ?.copyWith(color: color, fontWeight: FontWeight.bold)),
             const Spacer(),
-            _StatusChip(status: _alert.status),
+            _StatusChip(status: alert.status),
           ]),
           const SizedBox(height: 12),
-          Text(_alert.body, style: theme.textTheme.bodyLarge),
+          Text(alert.body, style: theme.textTheme.bodyLarge),
           const SizedBox(height: 8),
           Text(
               DateFormat("EEEE d 'de' MMMM, HH:mm", 'es')
-                  .format(_alert.timestamp),
+                  .format(alert.timestamp),
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.outline)),
-          if (called?.calledTo != null) ...[
+          if (alert.calledTo != null) ...[
             const SizedBox(height: 12),
             Row(children: [
               Icon(Icons.phone_forwarded,
                   size: 18, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Llamada automática a ${called!.calledTo}'
-                    '${called.calledAt == null ? '' : ' · ${DateFormat('HH:mm').format(called.calledAt!)}'}'),
+                child: Text('Llamada automática a ${alert.calledTo}'
+                    '${alert.calledAt == null ? '' : ' · ${DateFormat('HH:mm').format(alert.calledAt!)}'}'),
               ),
             ]),
           ],
@@ -410,7 +411,7 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
             Text('Línea de tiempo del caso',
                 style: theme.textTheme.titleSmall
                     ?.copyWith(fontWeight: FontWeight.bold)),
-            FutureBuilder<List<CaseEvent>>(
+            FutureBuilder<List<CaseEvent>?>(
               future: _events,
               builder: (context, snap) {
                 if (snap.connectionState != ConnectionState.done) {
@@ -418,7 +419,12 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
                       padding: EdgeInsets.symmetric(vertical: 8),
                       child: LinearProgressIndicator());
                 }
-                final events = snap.data ?? const <CaseEvent>[];
+                final events = snap.data;
+                if (events == null) {
+                  return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('No se pudo cargar la línea de tiempo.'));
+                }
                 if (events.isEmpty) {
                   return const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
@@ -441,10 +447,10 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
             ),
           ],
           const SizedBox(height: 24),
-          if (_alert.status == AlertStatus.active) ...[
+          if (alert.status == AlertStatus.active) ...[
             FilledButton.icon(
               onPressed: () {
-                context.read<AlertsProvider>().markViewed(_alert.id);
+                context.read<AlertsProvider>().markViewed(alert.id);
                 setState(() =>
                     _alert = _alert.copyWith(status: AlertStatus.viewed));
               },

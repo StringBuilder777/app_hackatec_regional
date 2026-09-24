@@ -135,6 +135,60 @@ void main() {
     await first;
   });
 
+  test('una fecha sin zona horaria se lee como UTC', () {
+    final c = CaseSummary.fromJson(
+        {'caseId': 'x', 'createdAt': '2026-09-24T20:00:00'});
+    expect(c.createdAt, DateTime.utc(2026, 9, 24, 20));
+  });
+
+  test('un caso sin createdAt nunca dispara la llamada', () async {
+    final api = _FakeApi()
+      ..cases = [
+        CaseSummary.fromJson({'caseId': 'x', 'severity': 'critical'}),
+      ];
+    final alerts = await _provider(api);
+    final incoming = <Alert>[];
+    alerts.incoming.listen(incoming.add);
+
+    await alerts.refreshCases();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(alerts.byId('x'), isNotNull);
+    expect(incoming, isEmpty);
+  });
+
+  test('un refresco pedido con un ciclo en vuelo se hace al terminar',
+      () async {
+    final api = _FakeApi()..hold = Completer<void>();
+    final alerts = await _provider(api);
+
+    final first = alerts.refreshCases();
+    await alerts.refreshCases(); // P. ej. tras cancelar: queda pendiente.
+    api.hold!.complete();
+    await first;
+    expect(api.calls, 2);
+  });
+
+  test('sin avisos por casos guardados con la versión anterior', () async {
+    final api = _FakeApi()..cases = [_case(age: const Duration(hours: 2))];
+    final alerts = await _provider(api);
+    await alerts.refreshCases();
+    // Como lo guardaba la versión anterior: sin campos del contrato.
+    alerts.byId('c1')!.data
+      ..remove('humanDecision')
+      ..remove('dialStatus')
+      ..remove('notificationStatus');
+    final updates = <String>[];
+    alerts.caseUpdates.listen(updates.add);
+    api.cases = [_case(age: const Duration(hours: 2), dial: 'CALLED')];
+
+    await alerts.refreshCases();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(alerts.byId('c1')!.body, contains('El sistema realizó una llamada'));
+    expect(updates, isEmpty);
+  });
+
   testWidgets('consulta cada 5 s y deja de hacerlo al pausar', (tester) async {
     final api = _FakeApi();
     final alerts = await _provider(api);
