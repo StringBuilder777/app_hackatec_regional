@@ -18,8 +18,11 @@ void main() {
 
     test('hace exactamente 15 segundos -> todavía es fresco (límite incluido)',
         () {
-      final t = DateTime.now().toUtc().subtract(const Duration(seconds: 15));
-      expect(isFresh(t), isTrue);
+      // Misma "hora actual" para ambos lados: con dos DateTime.now() la
+      // diferencia es 15 s + unos microsegundos y la prueba fallaba.
+      final now = DateTime.now().toUtc();
+      final t = now.subtract(const Duration(seconds: 15));
+      expect(isFresh(t, now: now), isTrue);
     });
 
     test('hace 20 segundos -> ya no es fresco', () {
