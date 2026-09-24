@@ -8,11 +8,14 @@ import 'app/home_shell.dart';
 import 'app/theme.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/push_service.dart';
+import 'core/services/sensecare_api_service.dart';
 import 'core/services/storage_service.dart';
 import 'features/auth/login_screen.dart';
 import 'models/alert.dart';
 import 'providers/alerts_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/cognito_auth_service.dart';
+import 'providers/devices_provider.dart';
 import 'providers/profiles_provider.dart';
 
 Future<void> main() async {
@@ -51,12 +54,34 @@ class CuidadosApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // Hoy: Cognito real (ver CognitoAuthService). Para volver al mock
+        // local de demo, cambia CognitoAuthService() por MockAuthService().
         ChangeNotifierProvider(
-            create: (_) => AuthProvider(MockAuthService(), storage)),
+            create: (_) => AuthProvider(CognitoAuthService(), storage)),
         ChangeNotifierProvider(
             create: (_) => AlertsProvider(storage, notifications)),
         ChangeNotifierProvider(
             create: (_) => ProfilesProvider(storage, notifications)),
+        // DevicesProvider necesita el IdToken vigente de AuthProvider para
+        // autorizar cada llamada al backend; el ProxyProvider lo mantiene
+        // sincronizado sin que la UI tenga que pasarlo a mano.
+        ChangeNotifierProxyProvider<AuthProvider, DevicesProvider>(
+          create: (ctx) => DevicesProvider(
+            SenseCareApiService(),
+            storage,
+            () => ctx.read<AuthProvider>().idToken,
+          ),
+          update: (ctx, auth, previous) {
+            final provider = previous ??
+                DevicesProvider(
+                  SenseCareApiService(),
+                  storage,
+                  () => auth.idToken,
+                );
+            provider.updateTokenProvider(() => auth.idToken);
+            return provider;
+          },
+        ),
       ],
       child: MaterialApp(
         title: 'Alertas Cuidados',

@@ -1,11 +1,17 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../core/services/storage_service.dart';
 
 /// Usuario autenticado (mínimo para el MVP).
+///
+/// [idToken] es el JWT de Cognito (o cadena vacía para el mock local); lo
+/// necesita [SenseCareApiService] para autorizar cada llamada al backend.
 class AuthUser {
   final String email;
-  const AuthUser(this.email);
+  final String idToken;
+  const AuthUser(this.email, [this.idToken = '']);
 }
 
 /// Contrato de autenticación. Hoy: mock local. Mañana: Cognito / tu backend AWS
@@ -57,9 +63,25 @@ class AuthProvider extends ChangeNotifier {
   bool get loading => _loading;
   String? get error => _error;
 
+  /// El IdToken de Cognito de la sesión actual, o `null` si no hay sesión o
+  /// el usuario viene del mock local (sin token real). Puede haber expirado
+  /// (dura 1 hora) — quien lo use debe manejar un 401 pidiendo re-login.
+  String? get idToken =>
+      (_user?.idToken.isNotEmpty ?? false) ? _user!.idToken : null;
+
   void _restore() {
-    final email = _storage.readString(_sessionKey);
-    if (email != null && email.isNotEmpty) _user = AuthUser(email);
+    final raw = _storage.readString(_sessionKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final email = decoded['email'] as String?;
+      final idToken = decoded['idToken'] as String? ?? '';
+      if (email != null && email.isNotEmpty) _user = AuthUser(email, idToken);
+    } catch (_) {
+      // Formato legado (sesión guardada antes de persistir el idToken):
+      // el valor crudo es directamente el email.
+      _user = AuthUser(raw);
+    }
   }
 
   Future<bool> login(String email, String password) async {
@@ -69,7 +91,10 @@ class AuthProvider extends ChangeNotifier {
     try {
       final user = await _service.login(email, password);
       _user = user;
-      await _storage.writeString(_sessionKey, user.email);
+      await _storage.writeString(
+        _sessionKey,
+        jsonEncode({'email': user.email, 'idToken': user.idToken}),
+      );
       _loading = false;
       notifyListeners();
       return true;

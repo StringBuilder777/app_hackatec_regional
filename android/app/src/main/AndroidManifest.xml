@@ -13,6 +13,8 @@
     <!-- Recordatorios exactos de medicacion -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <!-- Escaneo de QR para emparejar un dispositivo (mobile_scanner) -->
+    <uses-permission android:name="android.permission.CAMERA"/>
 
     <!-- El flash es opcional: la app funciona aunque el equipo no lo tenga -->
     <uses-feature android:name="android.hardware.camera.flash" android:required="false"/>

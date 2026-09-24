@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../features/alerts/alerts_screen.dart';
+import '../features/devices/devices_list_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../providers/alerts_provider.dart';
 
-/// Contenedor principal tras el login: navegación entre Alertas y Perfil.
+/// Contenedor principal tras el login: navegación entre Alertas,
+/// Dispositivos y Perfil.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -22,7 +24,11 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       body: IndexedStack(
         index: _index,
-        children: const [AlertsScreen(), ProfileScreen()],
+        children: const [
+          AlertsScreen(),
+          DevicesListScreen(),
+          ProfileScreen(),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
@@ -36,6 +42,11 @@ class _HomeShellState extends State<HomeShell> {
             ),
             selectedIcon: const Icon(Icons.notifications),
             label: 'Alertas',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.sensors_outlined),
+            selectedIcon: Icon(Icons.sensors),
+            label: 'Dispositivos',
           ),
           const NavigationDestination(
             icon: Icon(Icons.person_outline),
