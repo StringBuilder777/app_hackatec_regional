@@ -30,14 +30,15 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
-/// Auth mock: acepta cualquier correo válido y contraseña de >= 4 caracteres.
+/// Auth mock: acepta cualquier usuario no vacío (como Cognito, no tiene que
+/// ser correo) y contraseña de >= 4 caracteres.
 class MockAuthService implements AuthService {
   @override
   Future<AuthUser> login(String email, String password) async {
     await Future.delayed(const Duration(milliseconds: 600)); // simula red
     final e = email.trim();
-    if (!e.contains('@') || !e.contains('.')) {
-      throw const AuthException('Ingresa un correo válido.');
+    if (e.isEmpty) {
+      throw const AuthException('Ingresa tu usuario.');
     }
     if (password.length < 4) {
       throw const AuthException(

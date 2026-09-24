@@ -62,7 +62,7 @@ void main() {
     await expectLater(
       service.login('cuidador@demo.com', 'mala'),
       throwsA(isA<AuthException>().having(
-          (e) => e.message, 'message', 'Correo o contraseña incorrectos.')),
+          (e) => e.message, 'message', 'Usuario o contraseña incorrectos.')),
     );
   });
 

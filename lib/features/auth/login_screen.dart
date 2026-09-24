@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
 
-/// Login normal. Hoy valida contra el mock local; la sesión persiste.
+/// Login contra Cognito con el nombre de usuario (no tiene que ser un correo);
+/// la sesión persiste.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -14,13 +15,13 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _email = TextEditingController(text: 'cuidador@demo.com');
+  final _username = TextEditingController();
   final _password = TextEditingController();
   bool _obscure = true;
 
   @override
   void dispose() {
-    _email.dispose();
+    _username.dispose();
     _password.dispose();
     super.dispose();
   }
@@ -28,7 +29,8 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final auth = context.read<AuthProvider>();
-    final ok = await auth.login(_email.text, _password.text);
+    // Sin espacios sueltos del teclado: Cognito compara el usuario exacto.
+    final ok = await auth.login(_username.text.trim(), _password.text);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(auth.error ?? 'Error al iniciar sesión')),
@@ -68,15 +70,18 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: theme.textTheme.bodyMedium
                             ?.copyWith(color: theme.colorScheme.outline)),
                     const SizedBox(height: 32),
+                    // Usuario de Cognito tal cual (puede no ser un correo).
                     TextFormField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
+                      controller: _username,
+                      keyboardType: TextInputType.text,
+                      autocorrect: false,
+                      enableSuggestions: false,
                       decoration: const InputDecoration(
-                        labelText: 'Correo',
-                        prefixIcon: Icon(Icons.mail_outline),
+                        labelText: 'Usuario',
+                        prefixIcon: Icon(Icons.person_outline),
                       ),
-                      validator: (v) => (v == null || !v.contains('@'))
-                          ? 'Ingresa un correo válido'
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Ingresa tu usuario'
                           : null,
                     ),
                     const SizedBox(height: 16),
@@ -112,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                        'Demo: usa cualquier correo y contraseña de 4+ caracteres.',
+                        'Entra con el usuario y la contraseña de tu cuenta.',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodySmall
                             ?.copyWith(color: theme.colorScheme.outline)),

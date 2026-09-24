@@ -75,32 +75,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
   }
 }
 
-/// Genera una alerta de ejemplo (con imagen) y la hace pasar por el mismo flujo
-/// que usará AWS SNS -> FCM: se guarda y dispara la notificación rica.
+/// Simula la caída de la persona cuidada (la alerta de la demo): pasa por el
+/// mismo flujo que usará AWS SNS -> FCM y dispara la llamada automática.
 Future<void> _simulateAlert(BuildContext context) async {
   final now = DateTime.now();
-  final severity =
-      AlertSeverity.values[now.second % AlertSeverity.values.length];
-  const samples = <AlertSeverity, (String, String)>{
-    AlertSeverity.critical: (
-      'Caída detectada',
-      'Posible caída en la habitación principal. Verifica de inmediato.'
-    ),
-    AlertSeverity.warning: (
-      'Medicación pendiente',
-      'No se ha registrado la toma programada.'
-    ),
-    AlertSeverity.info: (
-      'Movimiento en casa',
-      'Se detectó actividad en la cocina.'
-    ),
-  };
-  final (title, body) = samples[severity]!;
   final alert = Alert(
     id: 'sim-${now.millisecondsSinceEpoch}',
-    title: title,
-    body: body,
-    severity: severity,
+    title: 'Caída detectada',
+    body: 'Posible caída en la habitación principal. Verifica de inmediato.',
+    severity: AlertSeverity.critical,
     imageUrl:
         'https://picsum.photos/seed/${now.millisecondsSinceEpoch}/600/320',
     timestamp: now,
@@ -108,7 +91,7 @@ Future<void> _simulateAlert(BuildContext context) async {
   await context.read<AlertsProvider>().receiveIncoming(alert);
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Alerta "${severity.label}" enviada')),
+      const SnackBar(content: Text('Alerta de caída enviada')),
     );
   }
 }
@@ -194,9 +177,18 @@ class _AlertCard extends StatelessWidget {
                   Row(children: [
                     _StatusChip(status: alert.status),
                     const SizedBox(width: 8),
-                    Text(_relativeTime(alert.timestamp),
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.colorScheme.outline)),
+                    Flexible(
+                      child: Text(_relativeTime(alert.timestamp),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: theme.colorScheme.outline)),
+                    ),
+                    if (alert.calledTo != null) ...[
+                      const SizedBox(width: 8),
+                      Icon(Icons.phone_forwarded,
+                          size: 14, color: theme.colorScheme.outline),
+                    ],
                   ]),
                 ],
               ),
@@ -335,6 +327,8 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = _alert.severity.color;
+    // La llamada automática puede registrarse con el detalle abierto.
+    final called = context.watch<AlertsProvider>().byId(_alert.id);
     return Scaffold(
       appBar: AppBar(title: Text(_alert.title)),
       body: ListView(
@@ -379,6 +373,18 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
                   .format(_alert.timestamp),
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.outline)),
+          if (called?.calledTo != null) ...[
+            const SizedBox(height: 12),
+            Row(children: [
+              Icon(Icons.phone_forwarded,
+                  size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Llamada automática a ${called!.calledTo}'
+                    '${called.calledAt == null ? '' : ' · ${DateFormat('HH:mm').format(called.calledAt!)}'}'),
+              ),
+            ]),
+          ],
           const SizedBox(height: 24),
           if (_alert.status == AlertStatus.active) ...[
             FilledButton.icon(

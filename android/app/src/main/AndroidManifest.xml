@@ -15,10 +15,18 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <!-- Escaneo de QR para emparejar un dispositivo (mobile_scanner) -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Llamada automatica al responsable / contacto de emergencia: marca sin
+         abrir el marcador y en altavoz (la voz de la app explica la situacion) -->
+    <uses-permission android:name="android.permission.CALL_PHONE"/>
+    <!-- Saber si contestaron (duracion en el registro de llamadas): si nadie
+         contesta, la app llama a emergencias -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG"/>
 
     <!-- El flash es opcional: la app funciona aunque el equipo no lo tenga -->
     <uses-feature android:name="android.hardware.camera.flash" android:required="false"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <!-- Igual la telefonia: sin ella solo no hay llamada automatica -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false"/>
 
     <application
         android:label="Alertas Cuidados"
@@ -73,6 +81,10 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Voz de las alertas (flutter_tts): ver el motor de texto a voz -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
     </queries>
 </manifest>

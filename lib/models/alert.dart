@@ -54,6 +54,11 @@ class Alert {
   /// (`seed-*`/`sim-*` de demo).
   final Map<String, dynamic> data;
 
+  /// Llamada automática que hizo la app por esta alerta ("Ana (responsable)")
+  /// y a qué hora, si la hubo.
+  final String? calledTo;
+  final DateTime? calledAt;
+
   const Alert({
     required this.id,
     required this.title,
@@ -63,11 +68,22 @@ class Alert {
     this.severity = AlertSeverity.info,
     this.status = AlertStatus.active,
     this.data = const {},
+    this.calledTo,
+    this.calledAt,
   });
 
   bool get hasImage => imageUrl != null && imageUrl!.isNotEmpty;
 
-  Alert copyWith({AlertStatus? status, Map<String, dynamic>? data}) => Alert(
+  /// Perfil (persona cuidada) al que pertenece la alerta, si el payload lo trae.
+  String? get profileId => data['profileId']?.toString();
+
+  Alert copyWith({
+    AlertStatus? status,
+    Map<String, dynamic>? data,
+    String? calledTo,
+    DateTime? calledAt,
+  }) =>
+      Alert(
         id: id,
         title: title,
         body: body,
@@ -76,6 +92,8 @@ class Alert {
         timestamp: timestamp,
         status: status ?? this.status,
         data: data ?? this.data,
+        calledTo: calledTo ?? this.calledTo,
+        calledAt: calledAt ?? this.calledAt,
       );
 
   factory Alert.fromJson(Map<String, dynamic> json) => Alert(
@@ -91,6 +109,8 @@ class Alert {
         timestamp: DateTime.tryParse(json['timestamp'] as String? ?? '') ??
             DateTime.now(),
         data: (json['data'] as Map?)?.cast<String, dynamic>() ?? const {},
+        calledTo: json['calledTo'] as String?,
+        calledAt: DateTime.tryParse(json['calledAt'] as String? ?? ''),
       );
 
   Map<String, dynamic> toJson() => {
@@ -102,6 +122,8 @@ class Alert {
         'status': status.name,
         'timestamp': timestamp.toIso8601String(),
         'data': data,
+        'calledTo': calledTo,
+        'calledAt': calledAt?.toIso8601String(),
       };
 
   /// Normaliza el payload `data` que enviaría AWS SNS -> FCM (todo strings).

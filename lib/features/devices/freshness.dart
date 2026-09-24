@@ -2,9 +2,11 @@ import '../../providers/devices_provider.dart';
 
 /// `true` si [lastSeenAt] existe y cayó dentro de la ventana [staleAfter]
 /// (requisito de producto: nunca presentar un dato viejo como "en vivo").
-bool isFresh(DateTime? lastSeenAt) {
+/// [now] permite probar el límite exacto; por defecto es la hora actual.
+bool isFresh(DateTime? lastSeenAt, {DateTime? now}) {
   if (lastSeenAt == null) return false;
-  return DateTime.now().toUtc().difference(lastSeenAt.toUtc()) <= staleAfter;
+  final reference = (now ?? DateTime.now()).toUtc();
+  return reference.difference(lastSeenAt.toUtc()) <= staleAfter;
 }
 
 /// Texto legible de "hace cuánto" se vio por última vez el dispositivo.
