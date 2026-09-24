@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 778 602" role="img" aria-labelledby="title desc">
+  <title id="title">Sense Care logo</title>
+  <desc id="desc">Circular interwoven Sense Care mark in brown and gold.</desc>
+  <defs>
+    <linearGradient id="brown" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8b5c32"/>
+      <stop offset="0.55" stop-color="#744622"/>
+      <stop offset="1" stop-color="#5f371b"/>
+    </linearGradient>
+    <linearGradient id="brownLight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a97945"/>
+      <stop offset="0.62" stop-color="#7d4d28"/>
+      <stop offset="1" stop-color="#633b20"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d7aa6d"/>
+      <stop offset="0.55" stop-color="#ba874b"/>
+      <stop offset="1" stop-color="#9a6834"/>
+    </linearGradient>
+    <linearGradient id="goldLight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e2bd7f"/>
+      <stop offset="0.45" stop-color="#c39255"/>
+      <stop offset="1" stop-color="#a8733b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- broken circular outline -->
+  <g fill="none" stroke="#754721" stroke-width="11" stroke-linecap="butt">
+    <path d="M113 254 A277 277 0 0 1 393 17"/>
+    <path d="M559 69 A276 276 0 0 1 671 245"/>
+    <path d="M676 343 A276 276 0 0 1 401 578"/>
+    <path d="M229 527 A276 276 0 0 1 114 355"/>
+  </g>
+
+  <!-- upper-left curved band -->
+  <path fill="url(#brownLight)" d="M144 279c0-101 80-187 183-219l40-8-29 55c-64 17-116 55-140 105-9 19-14 42-14 67z"/>
+  <path fill="#a77743" opacity=".55" d="M240 91c34-22 71-34 112-39l-27 54c-32 11-61 26-85 49z"/>
+
+  <!-- upper interwoven dark stroke -->
+  <path fill="url(#brown)" d="M263 208c34 0 55-20 69-49L403 25c9-20 27-29 45-24l36 8-93 180c-23 46-54 76-92 76-18 0-32-11-35-28z"/>
+  <path fill="#aa7c4c" opacity=".52" d="M274 216c25 6 47-11 61-41L410 35l24-24-89 174c-20 39-43 57-70 61z"/>
+
+  <!-- upper-right loop -->
+  <path fill="url(#brownLight)" d="M491 17l57 34-48 82c-14-12-30-22-47-30z"/>
+  <path fill="url(#brown)" d="M520 96c55 31 98 84 117 149h-54c-14-48-43-89-84-113z"/>
+  <path fill="#966536" opacity=".48" d="M515 97l26 14-23 40-27-19z"/>
+
+  <!-- central upper horizontal ribbon -->
+  <path fill="url(#brown)" d="M109 278h193c40-2 70-26 91-66L499 17l48 29-112 211c-31 57-72 76-129 76H73z"/>
+  <path fill="#ad8052" opacity=".56" d="M265 289c45-9 75-34 96-74L487 30l23 14-116 214c-27 48-65 69-117 71z"/>
+
+  <!-- lower-left gold band -->
+  <path fill="url(#gold)" d="M148 350h55c15 49 46 89 88 113l-29 48c-58-32-98-90-114-161z"/>
+  <path fill="#a8753d" opacity=".5" d="M253 463l31 17-29 49-31-17z"/>
+
+  <!-- lower interwoven gold stroke -->
+  <path fill="url(#goldLight)" d="M243 551l105-188c26-47 59-77 100-93h265l-31 53H457c-27 11-48 31-65 62L289 593z"/>
+  <path fill="#f0ce94" opacity=".62" d="M352 411l31-55c18-32 39-53 64-65h38c-34 17-58 40-76 74l-28 52z"/>
+
+  <!-- lower-right loop -->
+  <path fill="url(#gold)" d="M588 318h55c1 79-38 154-107 195-34 20-70 30-116 31l35-57c39-6 69-19 94-40 29-27 43-69 39-129z"/>
+  <path fill="#e2bd7e" opacity=".42" d="M590 424c25-26 34-59 35-101h21c0 57-16 98-50 132-27 26-61 43-102 50l17-28c33-10 58-26 79-53z"/>
+
+  <!-- lower crossing ribbon -->
+  <path fill="url(#goldLight)" d="M302 594l-61-38 119-211c22-40 49-65 81-78l44 16c-28 10-50 30-68 63L312 583c-3 6-6 9-10 11z"/>
+  <path fill="url(#gold)" d="M387 564l-43-27 61-109c22-39 46-65 74-77 19-8 35-1 42 17l3 9c-26-3-50 15-69 49z"/>
+  <path fill="#f1d096" opacity=".66" d="M411 430l27-47c17-29 36-48 57-55l24 8c-27 13-45 34-62 65l-22 40z"/>
+</svg>

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
@@ -51,8 +52,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.notifications_active,
-                        size: 72, color: theme.colorScheme.primary),
+                    SvgPicture.asset(
+                      'assets/sense-care.svg',
+                      height: 96,
+                      semanticsLabel: 'Logo Sense Care',
+                    ),
                     const SizedBox(height: 16),
                     Text('Alertas Cuidados',
                         textAlign: TextAlign.center,

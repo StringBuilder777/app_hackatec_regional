@@ -25,6 +25,11 @@ class NotificationService {
   static const alertChannelId = 'alertas';
   static const reminderChannelId = 'recordatorios';
 
+  /// Patrón de vibración de emergencia (ms: espera, vibra, espera, vibra...).
+  /// Se aplica en el canal crítico (que es quien manda en Android 8+) y en el
+  /// refuerzo háptico manual, para que ambos vibren igual.
+  static const _criticalPattern = <int>[0, 500, 250, 500, 250, 800];
+
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   bool _ready = false;
@@ -39,7 +44,8 @@ class NotificationService {
     tzdata.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation(await _resolveTimeZone()));
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit =
+        AndroidInitializationSettings('@drawable/ic_stat_sense_care');
     const initSettings = InitializationSettings(android: androidInit);
     await _plugin.initialize(
       settings: initSettings,
@@ -67,6 +73,9 @@ class NotificationService {
     final android = _androidPlugin;
     await android?.requestNotificationsPermission();
     await android?.requestExactAlarmsPermission();
+    // Android 14+: el intent a pantalla completa exige permiso propio; sin él
+    // las alertas críticas caen a heads-up en vez de abrir a pantalla completa.
+    await android?.requestFullScreenIntentPermission();
   }
 
   AndroidFlutterLocalNotificationsPlugin? get _androidPlugin =>
@@ -76,14 +85,16 @@ class NotificationService {
   Future<void> _createChannels() async {
     final android = _androidPlugin;
     if (android == null) return;
-    await android.createNotificationChannel(const AndroidNotificationChannel(
+    await android.createNotificationChannel(AndroidNotificationChannel(
       criticalChannelId,
       'Alertas críticas',
       description: 'Emergencias que requieren atención inmediata',
       importance: Importance.max,
       enableLights: true,
-      ledColor: Color(0xFFD32F2F),
+      ledColor: const Color(0xFFD32F2F),
       enableVibration: true,
+      // En Android 8+ el patrón lo define el canal, no la notificación.
+      vibrationPattern: Int64List.fromList(_criticalPattern),
     ));
     await android.createNotificationChannel(const AndroidNotificationChannel(
       alertChannelId,
@@ -139,7 +150,10 @@ class NotificationService {
       ledOnMs: 1000,
       ledOffMs: 500,
       enableVibration: true,
-      vibrationPattern: Int64List.fromList(const [0, 500, 250, 500]),
+      // Solo aplica en Android < 8 (en 8+ manda el canal). Se alinea con el
+      // patrón del canal para las críticas y usa uno breve para el resto.
+      vibrationPattern:
+          Int64List.fromList(isCritical ? _criticalPattern : const [0, 400]),
       ticker: alert.title,
     );
 
@@ -151,9 +165,10 @@ class NotificationService {
       payload: alert.id,
     );
 
-    // Refuerzo háptico y visual (con la app en primer plano).
+    // Refuerzo háptico y visual (con la app en primer plano). El flash no se
+    // espera para no retrasar ~2 s el resto del flujo de la alerta.
     await _vibrate(isCritical);
-    if (isCritical) await _flash();
+    if (isCritical) unawaited(_flash());
   }
 
   Future<String?> _downloadImage(String url) async {
@@ -176,7 +191,7 @@ class NotificationService {
     try {
       if (await Vibration.hasVibrator() != true) return;
       if (critical) {
-        await Vibration.vibrate(pattern: const [0, 500, 250, 500, 250, 800]);
+        await Vibration.vibrate(pattern: _criticalPattern);
       } else {
         await Vibration.vibrate(duration: 400);
       }
@@ -185,7 +200,12 @@ class NotificationService {
     }
   }
 
+  bool _flashing = false;
+
   Future<void> _flash({int times = 5}) async {
+    // Evita que dos alertas solapen los destellos y dejen la linterna encendida.
+    if (_flashing) return;
+    _flashing = true;
     try {
       for (var i = 0; i < times; i++) {
         await TorchLight.enableTorch();
@@ -195,6 +215,12 @@ class NotificationService {
       }
     } catch (e) {
       debugPrint('Flash no disponible en este equipo: $e');
+    } finally {
+      // Pase lo que pase, la linterna debe quedar apagada.
+      try {
+        await TorchLight.disableTorch();
+      } catch (_) {}
+      _flashing = false;
     }
   }
 
