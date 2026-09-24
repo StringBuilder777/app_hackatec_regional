@@ -32,6 +32,19 @@ class AlertsProvider extends ChangeNotifier {
   final List<Alert> _alerts = [];
   AlertFilter _filter = AlertFilter.all;
 
+  /// Contrato de polling de casos.
+  static const pollInterval = Duration(seconds: 5);
+
+  /// Un caso nuevo más viejo que esto entra sin notificación ni llamada.
+  static const _freshCase = Duration(minutes: 10);
+
+  Timer? _pollTimer;
+  bool _syncing = false;
+
+  /// Avisos dentro de la app de casos actualizados ("Caso actualizado: …").
+  Stream<String> get caseUpdates => _caseUpdates.stream;
+  final _caseUpdates = StreamController<String>.broadcast();
+
   /// Mensaje del último error al cancelar/escalar contra el backend (sesión
   /// expirada, sin red, etc.). `null` en éxito o cuando la alerta era
   /// puramente local. Sigue el mismo patrón que `DevicesProvider.pairError`:
@@ -137,7 +150,9 @@ class AlertsProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    stopPolling();
     _incoming.close();
+    _caseUpdates.close();
     super.dispose();
   }
 
@@ -154,69 +169,154 @@ class AlertsProvider extends ChangeNotifier {
   /// próximo intento de sync lo resuelve; no hay UI esperando este `Future`
   /// de forma síncrona como para necesitar propagar el error.
   Future<void> syncFromBackend(String idToken) async {
-    if (idToken.isEmpty) return;
+    // Una sola petición a la vez: si el ciclo previo no terminó, se salta.
+    if (idToken.isEmpty || _syncing) return;
+    _syncing = true;
+    try {
+      await _syncCases(idToken);
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  Future<void> _syncCases(String idToken) async {
     List<CaseSummary> cases;
     try {
-      cases = await _api.listCases(idToken: idToken);
+      cases = await _api.listCases(idToken: idToken, limit: 20);
     } catch (_) {
       return;
     }
     if (cases.isEmpty) return;
 
+    final fresh = <Alert>[];
+    var changed = false;
     for (final c in cases) {
       final incoming = _alertFromCase(c);
       final i = _alerts.indexWhere((a) => a.id == incoming.id);
       if (i == -1) {
-        _alerts.add(incoming);
+        // Caso nuevo: alerta completa (notificación y llamada automática)
+        // solo si es reciente y sigue abierto; al abrir la app o emparejar,
+        // los casos viejos entran callados.
+        if (!c.isCancelled &&
+            DateTime.now().difference(c.createdAt) < _freshCase) {
+          fresh.add(incoming);
+        } else {
+          _alerts.add(incoming);
+          changed = true;
+        }
         continue;
       }
       final current = _alerts[i];
+      // Mismo caseId y mismo updatedAt/estado: nada cambió.
+      if (_caseVersion(current.data) == _caseVersion(incoming.data)) continue;
       // Nunca regresar una alerta ya marcada `viewed` localmente a `active`
-      // sólo porque el backend todavía diga PENDING/SENT: "vista" es una
-      // decisión local del cuidador que el backend no modela.
+      // sólo porque el backend todavía no la resuelva: "vista" es una
+      // decisión local del cuidador que el backend no modela. La llamada
+      // automática que hizo esta app también se conserva.
       final keepViewed = current.status == AlertStatus.viewed &&
           incoming.status == AlertStatus.active;
-      _alerts[i] =
-          keepViewed ? incoming.copyWith(status: AlertStatus.viewed) : incoming;
+      _alerts[i] = incoming.copyWith(
+        status: keepViewed ? AlertStatus.viewed : null,
+        calledTo: current.calledTo,
+        calledAt: current.calledAt,
+      );
+      changed = true;
+      _caseUpdates.add('Caso actualizado: ${incoming.title} · ${_whatChanged(c)}');
     }
-    notifyListeners();
-    await _persist();
+    if (changed) {
+      notifyListeners();
+      await _persist();
+    }
+    for (final alert in fresh) {
+      await receiveIncoming(alert);
+    }
   }
 
-  /// Mapea un caso del backend a un [Alert] de la UI. `id` = `caseId` (así
-  /// [cancel]/[escalate] pueden recuperar el caso real desde `Alert.data`,
-  /// que guarda el `CaseSummary` completo).
+  /// `updatedAt` más los estados del contrato: por si un caso cambia sin que
+  /// el backend mande `updatedAt` (los campos opcionales pueden faltar).
+  String _caseVersion(Map<String, dynamic> d) => [
+        d['updatedAt'],
+        d['humanDecision'],
+        d['dialStatus'],
+        d['status'],
+        d['notificationStatus'],
+      ].join('|');
+
+  /// Texto corto del estado de un caso actualizado. La llamada del sistema
+  /// solo se menciona si `dialStatus` la confirma (contrato de polling).
+  String _whatChanged(CaseSummary c) {
+    if (c.isCancelled) return 'cancelado';
+    if (c.isEscalated) return 'escalado';
+    if (c.isDialing) return 'el sistema está marcando';
+    if (c.wasCalled) return 'el sistema realizó la llamada';
+    return 'nuevo estado';
+  }
+
+  /// Polling de `GET /cases` (contrato: cada 5 s con la app al frente, una
+  /// sola petición a la vez). Lo arranca y lo pausa `HomeShell` según el
+  /// ciclo de vida de la app; sin IdToken no consulta nada.
+  void startPolling() {
+    _pollTimer?.cancel();
+    unawaited(refreshCases());
+    _pollTimer = Timer.periodic(pollInterval, (_) => refreshCases());
+  }
+
+  void stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  /// Una consulta de `GET /cases` con el IdToken vigente.
+  Future<void> refreshCases() async {
+    final token = _tokenProvider();
+    if (token == null || token.isEmpty) return;
+    await syncFromBackend(token);
+  }
+
+  /// Línea de tiempo del caso (`GET /cases/{id}/events`): se pide al abrir
+  /// el detalle, no en cada ciclo. Vacía si falla (el detalle no se traba).
+  Future<List<CaseEvent>> caseEvents(String caseId) async {
+    final token = _tokenProvider();
+    if (token == null || token.isEmpty) return const [];
+    try {
+      return await _api.getCaseEvents(caseId: caseId, idToken: token);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Mapea un caso del backend a una alerta "especializada": el título dice
+  /// qué detectó el dispositivo (p. ej. una persona en el suelo sin moverse)
+  /// y el texto, el estado real del caso. `id` = `caseId` (así
+  /// [cancel]/[escalate] recuperan el caso desde `Alert.data`, que guarda el
+  /// `CaseSummary` completo).
   ///
-  /// Severidad: se usa `severity` si vino; si no, se asume `warning` (nunca
-  /// `critical` sin que el backend lo diga explícitamente, para no
-  /// sobre-alarmar).
-  ///
-  /// Estado: `CANCELLED` -> `canceled`; cualquier otro valor
-  /// (`PENDING`/`SENT`/`ESCALATED`/`FAILED`/desconocido) -> `active`, porque
-  /// todos siguen requiriendo atención o acción del cuidador. `AlertStatus`
-  /// no tiene un valor "escalado" propio (no cambia lo que el cuidador debe
-  /// hacer: seguir viéndolo como activo); el `alertStatus` real igual queda
-  /// disponible en `data['alertStatus']` para quien lo necesite mostrar.
+  /// Severidad: la del backend; sin ella, `warning` (nunca `critical` sin que
+  /// el backend lo diga, para no sobre-alarmar). Estado: cancelado si hubo
+  /// `humanDecision: CANCELLED`; si no, activo.
   Alert _alertFromCase(CaseSummary c) {
     final severity = switch (c.severity) {
       'critical' => AlertSeverity.critical,
-      'warning' => AlertSeverity.warning,
+      'info' => AlertSeverity.info,
       _ => AlertSeverity.warning,
     };
-    final status = switch (c.alertStatus) {
-      'CANCELLED' => AlertStatus.canceled,
-      _ => AlertStatus.active,
-    };
+    final (title, what) = _describeCase(c);
+    final details = [
+      what,
+      'Dispositivo ${c.deviceId}',
+      if (c.isDialing) 'El sistema está marcando al contacto',
+      if (c.wasCalled) 'El sistema realizó una llamada',
+      if (c.isEscalated) 'Caso escalado',
+      if (c.isCancelled) 'Caso cancelado',
+      if (c.evidenceStatus == 'AVAILABLE') 'Evidencia disponible',
+      if (c.analysisStatus == 'COMPLETED') 'Análisis completado',
+    ];
     return Alert(
       id: c.caseId,
-      title: switch (c.eventType) {
-        'VISUAL_ANOMALY' => 'Anomalía visual detectada',
-        'SENSOR_ANOMALY' => 'Anomalía de sensor detectada',
-        _ => 'Caso detectado',
-      },
-      body: 'Dispositivo ${c.deviceId} · ${c.anomalyType}',
+      title: title,
+      body: details.join(' · '),
       severity: severity,
-      status: status,
+      status: c.isCancelled ? AlertStatus.canceled : AlertStatus.active,
       timestamp: c.createdAt,
       data: c.toJson(),
     );
@@ -269,6 +369,8 @@ class AlertsProvider extends ChangeNotifier {
           ? await _api.escalateCase(caseId: caseId, idToken: token)
           : await _api.cancelCase(caseId: caseId, idToken: token);
       _applyDecision(id, result);
+      // Contrato: tras cancelar/escalar (o un 409) se refresca /cases ya.
+      unawaited(syncFromBackend(token));
       return result;
     } on ApiException catch (e) {
       _decisionError = e.message;
@@ -326,4 +428,28 @@ class AlertsProvider extends ChangeNotifier {
       ),
     ];
   }
+}
+
+/// Título y descripción según lo que detectó el dispositivo. "Caída" en el
+/// título hace que la voz de la llamada automática diga "se cayó".
+(String, String) _describeCase(CaseSummary c) => switch (c.anomalyType) {
+      'PERSON_PRONE_INACTIVE' => (
+          'Posible caída detectada',
+          'Persona en el suelo sin moverse'
+        ),
+      'FALL_DETECTED' => ('Caída detectada', 'El dispositivo detectó una caída'),
+      _ => (
+          switch (c.eventType) {
+            'VISUAL_ANOMALY' => 'Anomalía visual detectada',
+            'SENSOR_ANOMALY' => 'Anomalía de sensor detectada',
+            _ => 'Caso detectado',
+          },
+          _humanize(c.anomalyType),
+        ),
+    };
+
+String _humanize(String code) {
+  if (code.isEmpty) return 'Sin detalle';
+  final text = code.toLowerCase().replaceAll('_', ' ');
+  return text[0].toUpperCase() + text.substring(1);
 }

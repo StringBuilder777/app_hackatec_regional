@@ -40,7 +40,9 @@ class CaseDecisionResult {
   }) =>
       CaseDecisionResult(
         caseId: j['caseId'] as String? ?? '',
-        alertStatus: j['alertStatus'] as String? ?? '',
+        // Contrato actual: `humanDecision`; el anterior: `alertStatus`.
+        alertStatus:
+            (j['humanDecision'] ?? j['alertStatus']) as String? ?? '',
         conflict: conflict,
         error: j['error'] as String?,
       );

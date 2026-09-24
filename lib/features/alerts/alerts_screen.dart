@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/alert.dart';
+import '../../models/case_summary.dart';
 import '../../providers/alerts_provider.dart';
 import '../../providers/auth_provider.dart';
 
@@ -268,6 +269,22 @@ class AlertDetailScreen extends StatefulWidget {
 class _AlertDetailScreenState extends State<AlertDetailScreen> {
   late Alert _alert = widget.alert;
 
+  /// Línea de tiempo del caso (`GET /cases/{id}/events`): se pide al abrir
+  /// el detalle y tras decidir, no en cada ciclo de polling.
+  Future<List<CaseEvent>>? _events;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEvents();
+  }
+
+  void _loadEvents() {
+    final caseId = _alert.data['caseId'] as String?;
+    if (caseId == null || caseId.isEmpty) return;
+    _events = context.read<AlertsProvider>().caseEvents(caseId);
+  }
+
   /// Núcleo de "Cancelar"/"Escalar": llama a `AlertsProvider.cancel`/
   /// `escalate`, que ya decide internamente si la alerta es local (demo) o
   /// un caso real del backend. El resultado tiene tres formas posibles:
@@ -308,7 +325,10 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
     final status = result.alertStatus == 'CANCELLED'
         ? AlertStatus.canceled
         : AlertStatus.active;
-    setState(() => _alert = _alert.copyWith(status: status));
+    setState(() {
+      _alert = _alert.copyWith(status: status);
+      _loadEvents();
+    });
 
     if (result.conflict) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -385,6 +405,41 @@ class _AlertDetailScreenState extends State<AlertDetailScreen> {
               ),
             ]),
           ],
+          if (_events != null) ...[
+            const SizedBox(height: 16),
+            Text('Línea de tiempo del caso',
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            FutureBuilder<List<CaseEvent>>(
+              future: _events,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: LinearProgressIndicator());
+                }
+                final events = snap.data ?? const <CaseEvent>[];
+                if (events.isEmpty) {
+                  return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('Sin eventos todavía.'));
+                }
+                return Column(children: [
+                  for (final e in events)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.circle, size: 10),
+                      title: Text(_humanizeEvent(e.eventType)),
+                      trailing: e.timestamp == null
+                          ? null
+                          : Text(DateFormat('HH:mm:ss')
+                              .format(e.timestamp!.toLocal())),
+                    ),
+                ]);
+              },
+            ),
+          ],
           const SizedBox(height: 24),
           if (_alert.status == AlertStatus.active) ...[
             FilledButton.icon(
@@ -426,4 +481,11 @@ String _relativeTime(DateTime t) {
   if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
   if (diff.inHours < 24) return 'Hace ${diff.inHours} h';
   return DateFormat('d MMM, HH:mm', 'es').format(t);
+}
+
+/// "NOTIFICATION_PUBLISHED" -> "Notification published".
+String _humanizeEvent(String code) {
+  if (code.isEmpty) return 'Evento';
+  final text = code.toLowerCase().replaceAll('_', ' ');
+  return text[0].toUpperCase() + text.substring(1);
 }

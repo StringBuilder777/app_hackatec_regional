@@ -14,6 +14,13 @@ class CaseSummary {
   final String? severity;
   final String? status;
   final String? alertStatus;
+
+  /// Contrato de polling: `humanDecision` (`CANCELLED`/`ESCALATED`/null),
+  /// estado de la notificación y `dialStatus` -- lo único que confirma una
+  /// llamada del sistema (`DIALING`/`CALLED`); nunca se infiere.
+  final String? notificationStatus;
+  final String? humanDecision;
+  final String? dialStatus;
   final String? evidenceStatus;
   final String? analysisStatus;
   final DateTime createdAt;
@@ -28,6 +35,9 @@ class CaseSummary {
     this.severity,
     this.status,
     this.alertStatus,
+    this.notificationStatus,
+    this.humanDecision,
+    this.dialStatus,
     this.evidenceStatus,
     this.analysisStatus,
     this.updatedAt,
@@ -41,6 +51,9 @@ class CaseSummary {
         severity: j['severity'] as String?,
         status: j['status'] as String?,
         alertStatus: j['alertStatus'] as String?,
+        notificationStatus: j['notificationStatus'] as String?,
+        humanDecision: j['humanDecision'] as String?,
+        dialStatus: j['dialStatus'] as String?,
         evidenceStatus: j['evidenceStatus'] as String?,
         analysisStatus: j['analysisStatus'] as String?,
         createdAt:
@@ -49,6 +62,13 @@ class CaseSummary {
             ? null
             : DateTime.tryParse(j['updatedAt'] as String),
       );
+
+  /// Decisión vigente: `humanDecision` (contrato actual) o `alertStatus`.
+  String? get decision => humanDecision ?? alertStatus;
+  bool get isCancelled => decision == 'CANCELLED';
+  bool get isEscalated => decision == 'ESCALATED';
+  bool get isDialing => dialStatus == 'DIALING';
+  bool get wasCalled => dialStatus == 'CALLED';
 
   /// Se usa para guardar el caso completo en `Alert.data`, asi
   /// `AlertsProvider.cancel`/`escalate` pueden recuperar el `caseId` real
@@ -61,6 +81,9 @@ class CaseSummary {
         'severity': severity,
         'status': status,
         'alertStatus': alertStatus,
+        'notificationStatus': notificationStatus,
+        'humanDecision': humanDecision,
+        'dialStatus': dialStatus,
         'evidenceStatus': evidenceStatus,
         'analysisStatus': analysisStatus,
         'createdAt': createdAt.toIso8601String(),

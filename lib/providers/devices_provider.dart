@@ -11,7 +11,8 @@ import '../models/paired_device.dart';
 /// en tiempo real.
 const staleAfter = Duration(seconds: 15);
 
-const _pollInterval = Duration(seconds: 4);
+/// Contrato de polling: `GET /devices/{id}/latest` cada 5 s.
+const _pollInterval = Duration(seconds: 5);
 
 /// Dispositivos emparejados por este usuario: lista persistida localmente,
 /// emparejamiento por QR/código manual, y polling de la última lectura
@@ -132,6 +133,18 @@ class DevicesProvider extends ChangeNotifier {
   /// "todavía no llegó la siguiente lectura" con "algo impide refrescar"
   /// (sesión expirada, pairing revocado, sin red).
   Future<void> refreshLatest(String deviceId) async {
+    if (_refreshing) return; // Una sola petición a la vez por recurso.
+    _refreshing = true;
+    try {
+      await _refreshLatest(deviceId);
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  bool _refreshing = false;
+
+  Future<void> _refreshLatest(String deviceId) async {
     final token = _tokenProvider();
     if (token == null || token.isEmpty) {
       _pollError = 'Tu sesión expiró. Vuelve a iniciar sesión.';
@@ -177,6 +190,20 @@ class DevicesProvider extends ChangeNotifier {
     _pollTimer?.cancel();
     _pollTimer = null;
     _polledDeviceId = null;
+  }
+
+  /// App en segundo plano: pausa sin olvidar qué dispositivo se veía.
+  void pausePolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  /// De vuelta al frente: refresca de inmediato y reanuda.
+  void resumePolling() {
+    final id = _polledDeviceId;
+    if (id == null || _pollTimer != null) return;
+    unawaited(refreshLatest(id));
+    _pollTimer = Timer.periodic(_pollInterval, (_) => refreshLatest(id));
   }
 
   @override
