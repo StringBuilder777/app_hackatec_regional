@@ -56,10 +56,36 @@ class CuidadosApp extends StatelessWidget {
       providers: [
         // Hoy: Cognito real (ver CognitoAuthService). Para volver al mock
         // local de demo, cambia CognitoAuthService() por MockAuthService().
+        // Se le pasa `push` para que registre el token de este dispositivo
+        // como endpoint de Amazon Pinpoint justo tras un login exitoso (no-op si
+        // `push.isAvailable` es `false`, ver `AuthProvider._registerPushDevice`).
         ChangeNotifierProvider(
-            create: (_) => AuthProvider(CognitoAuthService(), storage)),
-        ChangeNotifierProvider(
-            create: (_) => AlertsProvider(storage, notifications)),
+            create: (_) =>
+                AuthProvider(CognitoAuthService(), storage, push: push)),
+        // AlertsProvider necesita el IdToken vigente de AuthProvider para
+        // llamar a `cancelCase`/`escalateCase` (`syncFromBackend` en cambio
+        // lo recibe explícito de quien lo invoca, ver AlertsScreen); el
+        // ProxyProvider lo mantiene sincronizado igual que con
+        // DevicesProvider más abajo.
+        ChangeNotifierProxyProvider<AuthProvider, AlertsProvider>(
+          create: (ctx) => AlertsProvider(
+            storage,
+            notifications,
+            SenseCareApiService(),
+            () => ctx.read<AuthProvider>().idToken,
+          ),
+          update: (ctx, auth, previous) {
+            final provider = previous ??
+                AlertsProvider(
+                  storage,
+                  notifications,
+                  SenseCareApiService(),
+                  () => auth.idToken,
+                );
+            provider.updateTokenProvider(() => auth.idToken);
+            return provider;
+          },
+        ),
         ChangeNotifierProvider(
             create: (_) => ProfilesProvider(storage, notifications)),
         // DevicesProvider necesita el IdToken vigente de AuthProvider para

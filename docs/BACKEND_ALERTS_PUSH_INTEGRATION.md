@@ -13,6 +13,51 @@ Ver también `docs/AWS_SNS_FCM.md` (ya existente) para la parte de
 Firebase/`google-services.json` — este documento no la repite, sólo cubre
 la parte de API HTTP que faltaba ahí.
 
+## Estado de implementación (secciones 2-4)
+
+Las secciones 2, 3 y 4 de este documento ya están implementadas en código
+(`SenseCareApiService`, `AuthProvider`, `AlertsProvider`, `alerts_screen.dart`).
+El plan de abajo se dejó tal cual para referencia histórica; las
+desviaciones reales respecto a lo escrito aquí fueron:
+
+- **Sección 2 -- `CaseDecisionResult`**: en vez de `{ applied: false,
+  currentAlertStatus }`, se implementó como `{ caseId, alertStatus,
+  conflict, error }` (`lib/models/case_decision_result.dart`). `conflict`
+  reemplaza a `applied` invertido (`conflict == !applied`) y se agregó
+  `error` para no perder el mensaje del backend en el 409. El razonamiento
+  completo de por qué NO es una `ApiException` está documentado como
+  comentario en la propia clase.
+- **Sección 3 -- registro de push**: se implementó dentro de
+  `AuthProvider.login()` (llamando a `_registerPushDevice()` justo tras un
+  login exitoso), no vía un `ChangeNotifierProxyProvider` observando la
+  transición de `isLoggedIn`. Motivo: es un efecto secundario del evento
+  "login exitoso", que ya vive en `AuthProvider`; no hay estado nuevo que la
+  UI deba observar, así que un provider intermedio sólo para reenviar el
+  idToken habría sido una capa de más. `AuthProvider` ahora recibe
+  `push`/`api` opcionales (`main.dart` los pasa). El `endpointId` se guarda
+  con `StorageService` y se da de baja en `AuthProvider.logout()`.
+- **Sección 4 -- `AlertsProvider`**: para que `cancel`/`escalate` puedan
+  llamar al backend sin que la UI tenga que pasar el `idToken` a mano, se
+  añadió un `ChangeNotifierProxyProvider<AuthProvider, AlertsProvider>` en
+  `main.dart` (mismo patrón que `DevicesProvider`) que le inyecta un
+  `String? Function() tokenProvider`. `syncFromBackend(idToken)` sí
+  conserva la firma exacta descrita abajo (recibe el `idToken` explícito de
+  quien lo invoca, hoy `AlertsScreen.initState`).
+- **No implementado: polling corto en `AlertsScreen`.** Sólo se sincroniza
+  una vez al abrir la pantalla (`initState`, después del primer frame,
+  igual que `DeviceDetailScreen.startPolling`). Se dejó así por alcance/
+  tiempo: la sincronización al abrir ya cubre la prueba de aceptación de la
+  sección 5 (reflejar `CANCELLED`/`ESCALATED` resueltos por otra vía en el
+  próximo `syncFromBackend`); un `Timer.periodic` como el de
+  `DevicesProvider` se puede añadir después sin cambiar el resto del
+  diseño.
+- `AlertStatus` no ganó un valor `escalated` propio: un caso `ESCALATED`
+  sigue siendo `AlertStatus.active` (nada cambia en lo que el cuidador debe
+  hacer), pero el `alertStatus` real del backend se guarda en
+  `Alert.data['alertStatus']` para quien lo necesite mostrar. La UI
+  (`AlertDetailScreen`) sí distingue el resultado con un SnackBar
+  inmediatamente después de escalar/cancelar.
+
 ## 1. Prerrequisito externo (ruta crítica, no depende de código)
 
 Crear el proyecto Firebase y obtener `google-services.json` (pasos 1–5 de

@@ -46,7 +46,12 @@ class Alert {
   final DateTime timestamp;
   final AlertStatus status;
 
-  /// Datos extra del payload (mensaje data-only de SNS/FCM).
+  /// Datos extra del payload (mensaje data-only de SNS/FCM) o del caso tal
+  /// como lo devolvió el backend (`CaseSummary.toJson`, ver
+  /// `AlertsProvider.syncFromBackend`). Cuando trae `caseId`, esta alerta
+  /// representa un caso real del backend y `cancel`/`escalate` lo usan para
+  /// llamar `SenseCareApiService`; si no, es una alerta puramente local
+  /// (`seed-*`/`sim-*` de demo).
   final Map<String, dynamic> data;
 
   const Alert({
@@ -62,7 +67,7 @@ class Alert {
 
   bool get hasImage => imageUrl != null && imageUrl!.isNotEmpty;
 
-  Alert copyWith({AlertStatus? status}) => Alert(
+  Alert copyWith({AlertStatus? status, Map<String, dynamic>? data}) => Alert(
         id: id,
         title: title,
         body: body,
@@ -70,7 +75,7 @@ class Alert {
         severity: severity,
         timestamp: timestamp,
         status: status ?? this.status,
-        data: data,
+        data: data ?? this.data,
       );
 
   factory Alert.fromJson(Map<String, dynamic> json) => Alert(
