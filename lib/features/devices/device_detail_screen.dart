@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/telemetry_reading.dart';
 import '../../providers/devices_provider.dart';
 import 'freshness.dart';
+import 'sensor_status.dart';
 
 /// Detalle de un dispositivo emparejado: lecturas de sensores en vivo. Hace
 /// polling de `GET /devices/{deviceId}/latest` cada pocos segundos mientras
@@ -45,7 +46,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final device = context.watch<DevicesProvider>().byId(widget.deviceId);
+    final devicesProvider = context.watch<DevicesProvider>();
+    final device = devicesProvider.byId(widget.deviceId);
+    final pollError = devicesProvider.pollError;
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -59,6 +62,10 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                 children: [
                   _FreshnessBanner(lastSeenAt: device.lastSeenAt),
+                  if (pollError != null) ...[
+                    const SizedBox(height: 8),
+                    _PollErrorBanner(message: pollError),
+                  ],
                   const SizedBox(height: 16),
                   if (device.latestTelemetry == null)
                     _NoReadingsYet(theme: theme)
@@ -67,6 +74,38 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+/// Motivo por el que el último intento de refrescar (cada 4s mientras esta
+/// pantalla está abierta) no trajo datos nuevos. Antes este error se
+/// tragaba en silencio (`DevicesProvider.refreshLatest`); sin esto, un 403
+/// por pairing revocado o una sesión expirada se veía igual que "todavía no
+/// llegó la siguiente lectura", indistinguible para quien mira la pantalla.
+class _PollErrorBanner extends StatelessWidget {
+  final String message;
+  const _PollErrorBanner({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: theme.colorScheme.error, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(message,
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -142,26 +181,31 @@ class _SensorGrid extends StatelessWidget {
         icon: Icons.thermostat_outlined,
         label: 'Temperatura',
         value: _fmt(reading.temperatureC, '°C'),
+        status: classifyTemperatura(reading.temperatureC),
       ),
       _SensorTileData(
         icon: Icons.water_drop_outlined,
         label: 'Humedad',
         value: _fmt(reading.humidityPct, '%'),
+        status: classifyHumedad(reading.humidityPct),
       ),
       _SensorTileData(
         icon: Icons.air,
         label: 'CO₂',
         value: _fmt(reading.co2Ppm, ' ppm', decimals: 0),
+        status: classifyCo2(reading.co2Ppm),
       ),
       _SensorTileData(
         icon: Icons.straighten,
         label: 'Proximidad',
         value: _fmt(reading.proximityCm, ' cm', decimals: 0),
+        status: classifyProximidad(reading.proximityCm),
       ),
       _SensorTileData(
         icon: Icons.volume_up_outlined,
         label: 'Ruido (prom.)',
         value: _fmt(reading.dbAvg, ' dB'),
+        status: classifyAudio(reading.dbAvg),
       ),
       _SensorTileData(
         icon: Icons.graphic_eq_outlined,
@@ -176,7 +220,7 @@ class _SensorGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
-      childAspectRatio: 1.5,
+      childAspectRatio: 1.15,
       children: [for (final t in tiles) _SensorTile(data: t)],
     );
   }
@@ -191,8 +235,9 @@ class _SensorTileData {
   final IconData icon;
   final String label;
   final String value;
+  final SensorStatus? status;
   const _SensorTileData(
-      {required this.icon, required this.label, required this.value});
+      {required this.icon, required this.label, required this.value, this.status});
 }
 
 class _SensorTile extends StatelessWidget {
@@ -202,6 +247,7 @@ class _SensorTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final status = data.status;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -209,7 +255,21 @@ class _SensorTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(data.icon, color: theme.colorScheme.primary),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(data.icon, color: theme.colorScheme.primary),
+                if (status != null)
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: sensorStatusColor(status),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 8),
             Text(data.value,
                 style: theme.textTheme.headlineSmall
@@ -217,6 +277,14 @@ class _SensorTile extends StatelessWidget {
             Text(data.label,
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.outline)),
+            if (status != null) ...[
+              const SizedBox(height: 4),
+              Text('Estado: ${sensorStatusLabel(status)}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: sensorStatusColor(status),
+                    fontWeight: FontWeight.bold,
+                  )),
+            ],
           ],
         ),
       ),
