@@ -2,13 +2,14 @@ import 'alert.dart';
 import 'care_profile.dart';
 
 /// A quién llama la app: al responsable o, si el usuario de la app es el
-/// responsable, a su contacto de emergencia.
-enum CallTargetKind { responsible, emergencyContact }
+/// responsable, a su contacto de emergencia; si no contestan, a emergencias.
+enum CallTargetKind { responsible, emergencyContact, emergencyServices }
 
 extension CallTargetKindX on CallTargetKind {
   String get label => switch (this) {
         CallTargetKind.responsible => 'responsable',
         CallTargetKind.emergencyContact => 'contacto de emergencia',
+        CallTargetKind.emergencyServices => 'emergencias',
       };
 }
 
@@ -23,8 +24,10 @@ class CallTarget {
   String get name =>
       contact.name.trim().isEmpty ? kind.label : contact.name.trim();
 
-  /// "Ana (responsable)": para el aviso y el historial de la alerta.
-  String get label => '$name (${kind.label})';
+  /// "Ana (responsable)" o "Emergencias": para el aviso y el historial.
+  String get label => kind == CallTargetKind.emergencyServices
+      ? 'Emergencias'
+      : '$name (${kind.label})';
 }
 
 /// A quién llamar por las alertas de [profile]; `null` si falta el teléfono.
@@ -67,7 +70,9 @@ String situationOf(Alert alert) {
 /// y le pide ir; al contacto de emergencia le da los datos para auxiliar:
 /// quién es, qué pasó y la dirección. Solo una alerta grave pide llamar a
 /// emergencias ("9 1 1" separado para que la voz lo diga dígito por dígito).
-String callScript(Alert alert, CareProfile profile, CallTarget target) {
+/// A emergencias, además, quién no contestó ([missedName]).
+String callScript(Alert alert, CareProfile profile, CallTarget target,
+    {String? missedName}) {
   final name = profile.name.trim();
   final grave = alert.severity == AlertSeverity.critical;
   switch (target.kind) {
@@ -84,6 +89,14 @@ String callScript(Alert alert, CareProfile profile, CallTarget target) {
           '${grave ? 'necesita ayuda' : 'nadie ha respondido'}. '
           '${address.isEmpty ? '' : 'La dirección es: $address. '}'
           '${grave ? 'Por favor, acude o llama a emergencias al 9 1 1.' : 'Por favor, comunícate o acude a revisar.'}';
+    case CallTargetKind.emergencyServices:
+      final address = profile.address.trim();
+      return 'Esta es una llamada automática de Sense Care. '
+          '$name ${situationOf(alert)}. Es una persona adulta mayor y '
+          'necesita ayuda urgente. '
+          '${missedName == null ? '' : '$missedName, su contacto, no contestó. '}'
+          '${address.isEmpty ? '' : 'La dirección es: $address. '}'
+          'Por favor, envíen ayuda.';
   }
 }
 

@@ -48,6 +48,12 @@ class _FakePhone implements PhoneCallService {
 
   @override
   Future<bool> isInCall() async => inCall;
+
+  /// Lo que diría el registro de llamadas (null = no se sabe / sin permiso).
+  bool? answered = true;
+
+  @override
+  Future<bool?> wasAnswered(DateTime since) async => answered;
 }
 
 class _FakeVoice implements VoiceService {
@@ -67,6 +73,7 @@ const _luis = CareProfile(
   address: 'Calle Juárez 123, Centro',
   responsible: CareContact(name: 'Ana', phone: '5511112222'),
   emergencyContact: CareContact(name: 'Beto', phone: '5533334444'),
+  emergencyServicesPhone: '5599990000',
 );
 
 Alert _alert(AlertSeverity severity,
@@ -101,6 +108,7 @@ void main() {
       expect(restored.responsible.phone, '5511112222');
       expect(restored.userIsResponsible, isTrue);
       expect(restored.emergencyContact.name, 'Beto');
+      expect(restored.emergencyServicesPhone, '5599990000');
     });
 
     test('un perfil guardado antes de esta versión carga sin contactos', () {
@@ -216,10 +224,11 @@ void main() {
       return EmergencyCallProvider(alerts, profiles, phone, voice);
     }
 
-    /// Cuelgan: la voz calla y se libera el turno de la siguiente llamada.
+    /// Cuelgan: la voz calla, se lee si contestaron (hasta 5 s) y se libera
+    /// el turno de la siguiente llamada.
     Future<void> hangUp(WidgetTester tester) async {
       phone.inCall = false;
-      await tester.pump(const Duration(seconds: 10));
+      await tester.pump(const Duration(seconds: 15));
     }
 
     testWidgets('grave: avisa, marca al responsable a los 15 s y la voz habla',
@@ -524,6 +533,65 @@ void main() {
 
       await hangUp(tester);
       expect(find.textContaining('Ana (responsable)'), findsNothing);
+    });
+
+    testWidgets('si no contestan, llama a emergencias y dice quién no contestó',
+        (tester) async {
+      await setUpCalls(_luis);
+      phone.answered = false; // Ana rechaza o no contesta.
+      await alerts.receiveIncoming(_alert(AlertSeverity.critical));
+      await tester.pump(const Duration(seconds: 15));
+      expect(phone.dialed, ['5511112222']);
+
+      await hangUp(tester); // Termina la llamada sin respuesta: escala.
+      expect(phone.dialed, ['5511112222', '5599990000']);
+      expect(voice.said, contains('Ana no contestó. Llamando a emergencias.'));
+      expect(
+          voice.said.where((s) =>
+              s.contains('Ana, su contacto, no contestó.') &&
+              s.contains('La dirección es: Calle Juárez 123, Centro.') &&
+              s.endsWith('Por favor, envíen ayuda.')),
+          isNotEmpty);
+      expect(alerts.byId('a-critical')!.calledTo,
+          'Ana (responsable) no contestó → Emergencias');
+
+      await hangUp(tester); // Emergencias es el último escalón.
+      expect(phone.dialed, hasLength(2));
+    });
+
+    for (final (caso, answered) in [('contestan', true), ('no se sabe', null)]) {
+      testWidgets('si $caso, no llama a emergencias', (tester) async {
+        await setUpCalls(_luis);
+        phone.answered = answered;
+        await alerts.receiveIncoming(_alert(AlertSeverity.critical));
+        await tester.pump(const Duration(seconds: 15));
+        await hangUp(tester);
+        expect(phone.dialed, ['5511112222']);
+      });
+    }
+
+    testWidgets('sin número de emergencias o con la alerta cancelada no escala',
+        (tester) async {
+      const rosa = CareProfile(
+          id: 'rosa',
+          name: 'Rosa',
+          responsible: CareContact(name: 'Juan', phone: '5555556666'),
+          emergencyServicesPhone: '5599990000');
+      final calls = await setUpCalls(
+          _luis.copyWith(emergencyServicesPhone: ''),
+          more: [rosa]);
+      phone.answered = false;
+      await alerts.receiveIncoming(_alert(AlertSeverity.critical));
+      await tester.pump(const Duration(seconds: 15));
+      await hangUp(tester);
+      expect(phone.dialed, hasLength(1)); // Sin número de emergencias.
+
+      await alerts.receiveIncoming(_critical('r', profileId: 'rosa'));
+      await tester.pump(const Duration(seconds: 15));
+      await alerts.cancel('r'); // Falsa alarma durante la llamada.
+      await hangUp(tester);
+      expect(phone.dialed, hasLength(2));
+      expect(calls.calls, isEmpty);
     });
 
     testWidgets('informativa no llama; sin teléfono no llama y avisa',

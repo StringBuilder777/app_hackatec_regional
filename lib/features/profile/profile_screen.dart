@@ -216,6 +216,7 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
   late final TextEditingController _responsiblePhone;
   late final TextEditingController _emergencyName;
   late final TextEditingController _emergencyPhone;
+  late final TextEditingController _emergencyServices;
   late List<MedicationReminder> _meds;
   late List<String> _careNeeds;
   TimeWindow? _sleep;
@@ -238,6 +239,8 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
         TextEditingController(text: p?.emergencyContact.name ?? '');
     _emergencyPhone =
         TextEditingController(text: p?.emergencyContact.phone ?? '');
+    _emergencyServices =
+        TextEditingController(text: p?.emergencyServicesPhone ?? '');
     _meds = [...?p?.medications];
     _careNeeds = [...?p?.careNeeds];
     _sleep = p?.sleepWindow;
@@ -254,6 +257,7 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
     _responsiblePhone.dispose();
     _emergencyName.dispose();
     _emergencyPhone.dispose();
+    _emergencyServices.dispose();
     _careController.dispose();
     super.dispose();
   }
@@ -302,6 +306,7 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
       userIsResponsible: _userIsResponsible,
       emergencyContact: CareContact(
           name: _emergencyName.text.trim(), phone: _emergencyPhone.text.trim()),
+      emergencyServicesPhone: _emergencyServices.text.trim(),
     );
     final calls = context.read<EmergencyCallProvider>();
     await context.read<ProfilesProvider>().upsert(profile);
@@ -435,6 +440,17 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
             else
               ..._contactFields(
                   _responsibleName, _responsiblePhone, 'del responsable'),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _emergencyServices,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Emergencias (si nadie contesta)',
+                helperText: 'Para la demo, el número de un compañero',
+                prefixIcon: Icon(Icons.local_hospital_outlined),
+              ),
+              validator: _validatePhone,
+            ),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: _save,

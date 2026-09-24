@@ -18,6 +18,9 @@
     <!-- Llamada automatica al responsable / contacto de emergencia: marca sin
          abrir el marcador y en altavoz (la voz de la app explica la situacion) -->
     <uses-permission android:name="android.permission.CALL_PHONE"/>
+    <!-- Saber si contestaron (duracion en el registro de llamadas): si nadie
+         contesta, la app llama a emergencias -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG"/>
 
     <!-- El flash es opcional: la app funciona aunque el equipo no lo tenga -->
     <uses-feature android:name="android.hardware.camera.flash" android:required="false"/>

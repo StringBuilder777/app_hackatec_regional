@@ -84,7 +84,9 @@ class _CallCard extends StatelessWidget {
         ),
       AutoCallState.calling => (
           'Llamando a $who…',
-          'Una voz explica la situación en altavoz.',
+          call.missed == null
+              ? 'Una voz explica la situación en altavoz.'
+              : '${call.missed!.name} no contestó. Una voz explica la situación.',
           <Widget>[
             TextButton.icon(
                 onPressed: provider.stopVoice,

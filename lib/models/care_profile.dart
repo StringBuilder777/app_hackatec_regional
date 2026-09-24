@@ -106,6 +106,10 @@ class CareProfile {
   final bool userIsResponsible;
   final CareContact emergencyContact;
 
+  /// Si la persona llamada no contesta, se llama aquí ("emergencias"; para la
+  /// demo, el número de un compañero: Android no deja marcar solo al 911).
+  final String emergencyServicesPhone;
+
   const CareProfile({
     required this.id,
     required this.name,
@@ -118,6 +122,7 @@ class CareProfile {
     this.responsible = const CareContact(),
     this.userIsResponsible = false,
     this.emergencyContact = const CareContact(),
+    this.emergencyServicesPhone = '',
   });
 
   CareProfile copyWith({
@@ -131,6 +136,7 @@ class CareProfile {
     CareContact? responsible,
     bool? userIsResponsible,
     CareContact? emergencyContact,
+    String? emergencyServicesPhone,
     bool clearSleep = false,
     bool clearHome = false,
   }) =>
@@ -146,6 +152,8 @@ class CareProfile {
         responsible: responsible ?? this.responsible,
         userIsResponsible: userIsResponsible ?? this.userIsResponsible,
         emergencyContact: emergencyContact ?? this.emergencyContact,
+        emergencyServicesPhone:
+            emergencyServicesPhone ?? this.emergencyServicesPhone,
       );
 
   factory CareProfile.fromJson(Map<String, dynamic> j) => CareProfile(
@@ -178,6 +186,7 @@ class CareProfile {
             ? const CareContact()
             : CareContact.fromJson(
                 (j['emergencyContact'] as Map).cast<String, dynamic>()),
+        emergencyServicesPhone: j['emergencyServicesPhone'] as String? ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -192,5 +201,6 @@ class CareProfile {
         'responsible': responsible.toJson(),
         'userIsResponsible': userIsResponsible,
         'emergencyContact': emergencyContact.toJson(),
+        'emergencyServicesPhone': emergencyServicesPhone,
       };
 }

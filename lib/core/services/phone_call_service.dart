@@ -7,7 +7,8 @@ import 'package:flutter/services.dart';
 class PhoneCallService {
   static const _channel = MethodChannel('sense_care/phone');
 
-  /// Pide el permiso de llamadas (diálogo del sistema si aún no se concede).
+  /// Pide los permisos de llamadas y del registro de llamadas (para saber si
+  /// contestaron). `true` si se puede marcar.
   Future<bool> requestPermission() => _invoke('requestCallPermission');
 
   /// Marca a [number]. `false` si no hay permiso o el sistema lo rechaza.
@@ -16,6 +17,20 @@ class PhoneCallService {
 
   /// Si el teléfono sigue en una llamada (marcando o hablando).
   Future<bool> isInCall() => _invoke('isInCall');
+
+  /// Si contestaron la llamada saliente hecha desde [since], según el registro
+  /// de llamadas (duración > 0). `null` si aún no está registrada o sin permiso.
+  Future<bool?> wasAnswered(DateTime since) async {
+    try {
+      return await _channel.invokeMethod<bool>(
+          'wasAnswered', {'since': since.millisecondsSinceEpoch});
+    } on MissingPluginException {
+      return null;
+    } on PlatformException catch (e) {
+      debugPrint('Llamada: "wasAnswered" falló: ${e.message}');
+      return null;
+    }
+  }
 
   Future<bool> _invoke(String method, [Object? arguments]) async {
     try {

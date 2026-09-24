@@ -25,11 +25,15 @@ class AutoCall {
   /// En llamada, la voz ya terminó (o se detuvo): solo falta que cuelguen.
   bool voiceDone = false;
 
+  /// Si es la llamada a emergencias: quién no contestó antes.
+  final CallTarget? missed;
+
   AutoCall({
     required this.alert,
     required this.profile,
     required this.target,
     required this.totalSeconds,
+    this.missed,
   }) : secondsLeft = totalSeconds;
 }
 
@@ -43,6 +47,10 @@ class EmergencyCallProvider extends ChangeNotifier {
 
   /// Tope para esperar a que cuelguen, por si Android no reporta el fin.
   static const _maxCall = Duration(minutes: 30);
+
+  /// Intentos (1 por segundo) para leer si contestaron: Android escribe el
+  /// registro de llamadas al colgar, con un poco de retraso.
+  static const _callLogTries = 5;
 
   final AlertsProvider _alerts;
   final ProfilesProvider _profiles;
@@ -191,25 +199,71 @@ class EmergencyCallProvider extends ChangeNotifier {
     call.voiceDone = false;
     _voiceStopped = false;
     notifyListeners();
+    final missed = call.missed;
     // Sin esperar a la voz: marcar no puede depender del motor de voz.
-    unawaited(_voice.speak('Llamando a ${call.target.name}.'));
+    unawaited(_voice.speak(missed == null
+        ? 'Llamando a ${call.target.name}.'
+        : '${missed.name} no contestó. Llamando a emergencias.'));
+    // Margen: el registro de llamadas guarda la hora en que empezó a marcar.
+    final placedAt = DateTime.now().subtract(const Duration(seconds: 2));
     if (!await _phone.placeCall(call.target.contact.phone)) {
       call.state = AutoCallState.failed;
       notifyListeners();
       return;
     }
     try {
-      await _alerts.recordCall(call.alert.id, call.target.label);
+      await _alerts.recordCall(
+          call.alert.id,
+          missed == null
+              ? call.target.label
+              : '${missed.label} no contestó → ${call.target.label}');
     } catch (e) {
       // La llamada ya salió: que un fallo al guardar no la dé por fallida.
       debugPrint('No se pudo registrar la llamada: $e');
     }
-    await _speakDuringCall(callScript(call.alert, call.profile, call.target));
+    await _speakDuringCall(callScript(call.alert, call.profile, call.target,
+        missedName: missed?.name));
     call.voiceDone = true;
     notifyListeners();
     // El turno se libera cuando cuelgan, no cuando calla la voz.
     await _waitWhileInCall();
+    final answered = await _answered(placedAt);
     if (_calls[call.alert.id] == call) _calls.remove(call.alert.id);
+    notifyListeners();
+    if (answered == false) _escalate(call);
+  }
+
+  /// Si contestaron la llamada marcada en [since]; `null` si no se sabe (sin
+  /// permiso del registro de llamadas): entonces no se escala.
+  Future<bool?> _answered(DateTime since) async {
+    for (var i = 0; i < _callLogTries; i++) {
+      final answered = await _phone.wasAnswered(since);
+      if (answered != null) return answered;
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    return null;
+  }
+
+  /// Nadie contestó: llama a emergencias (el número del perfil; para la demo,
+  /// el de un compañero). Emergencias es el último escalón, y una alerta que
+  /// ya no hace falta (cancelada, o advertencia atendida) no escala.
+  void _escalate(AutoCall missed) {
+    final phone = missed.profile.emergencyServicesPhone.trim();
+    if (missed.target.kind == CallTargetKind.emergencyServices ||
+        phone.isEmpty ||
+        !_stillNeeded(missed)) {
+      return;
+    }
+    final call = AutoCall(
+      alert: missed.alert,
+      profile: missed.profile,
+      target: CallTarget(CallTargetKind.emergencyServices,
+          CareContact(name: 'Emergencias', phone: phone)),
+      totalSeconds: 0,
+      missed: missed.target,
+    );
+    _calls[missed.alert.id] = call;
+    _startDialing(call);
     notifyListeners();
   }
 

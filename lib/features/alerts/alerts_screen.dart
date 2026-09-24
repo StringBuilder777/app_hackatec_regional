@@ -75,32 +75,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
   }
 }
 
-/// Genera una alerta de ejemplo (con imagen) y la hace pasar por el mismo flujo
-/// que usará AWS SNS -> FCM: se guarda y dispara la notificación rica.
+/// Simula la caída de la persona cuidada (la alerta de la demo): pasa por el
+/// mismo flujo que usará AWS SNS -> FCM y dispara la llamada automática.
 Future<void> _simulateAlert(BuildContext context) async {
   final now = DateTime.now();
-  final severity =
-      AlertSeverity.values[now.second % AlertSeverity.values.length];
-  const samples = <AlertSeverity, (String, String)>{
-    AlertSeverity.critical: (
-      'Caída detectada',
-      'Posible caída en la habitación principal. Verifica de inmediato.'
-    ),
-    AlertSeverity.warning: (
-      'Medicación pendiente',
-      'No se ha registrado la toma programada.'
-    ),
-    AlertSeverity.info: (
-      'Movimiento en casa',
-      'Se detectó actividad en la cocina.'
-    ),
-  };
-  final (title, body) = samples[severity]!;
   final alert = Alert(
     id: 'sim-${now.millisecondsSinceEpoch}',
-    title: title,
-    body: body,
-    severity: severity,
+    title: 'Caída detectada',
+    body: 'Posible caída en la habitación principal. Verifica de inmediato.',
+    severity: AlertSeverity.critical,
     imageUrl:
         'https://picsum.photos/seed/${now.millisecondsSinceEpoch}/600/320',
     timestamp: now,
@@ -108,7 +91,7 @@ Future<void> _simulateAlert(BuildContext context) async {
   await context.read<AlertsProvider>().receiveIncoming(alert);
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Alerta "${severity.label}" enviada')),
+      const SnackBar(content: Text('Alerta de caída enviada')),
     );
   }
 }

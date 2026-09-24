@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.CallLog
 import android.telecom.TelecomManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -25,6 +26,8 @@ class MainActivity : FlutterActivity() {
                     "requestCallPermission" -> requestCallPermission(result)
                     "placeCall" -> result.success(placeCall(call.argument<String>("number")))
                     "isInCall" -> result.success(isInCall())
+                    "wasAnswered" -> result.success(
+                        wasAnswered(call.argument<Number>("since")?.toLong() ?: 0L))
                     else -> result.notImplemented()
                 }
             }
@@ -33,8 +36,15 @@ class MainActivity : FlutterActivity() {
     private fun hasCallPermission() =
         checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
 
+    // Marcar (CALL_PHONE) y saber si contestaron (READ_CALL_LOG).
+    private fun missingPermissions() = arrayOf(
+        Manifest.permission.CALL_PHONE,
+        Manifest.permission.READ_CALL_LOG,
+    ).filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+
     private fun requestCallPermission(result: MethodChannel.Result) {
-        if (hasCallPermission()) {
+        val missing = missingPermissions()
+        if (missing.isEmpty()) {
             result.success(true)
             return
         }
@@ -42,7 +52,7 @@ class MainActivity : FlutterActivity() {
         // Un solo dialogo: las demas solicitudes esperan su respuesta (pedirlo
         // otra vez haria que Android cancele y todas recibieran false).
         if (pendingPermission.size == 1) {
-            requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), CALL_PERMISSION_REQUEST)
+            requestPermissions(missing.toTypedArray(), CALL_PERMISSION_REQUEST)
         }
     }
 
@@ -73,6 +83,26 @@ class MainActivity : FlutterActivity() {
             true
         } catch (e: SecurityException) {
             false
+        }
+    }
+
+    // Si contestaron la ultima llamada saliente desde [since] (ms): el registro
+    // de llamadas guarda su duracion (0 = nadie contesto). null si no se sabe
+    // (sin permiso, o Android aun no la registra: lo hace al colgar).
+    private fun wasAnswered(since: Long): Boolean? {
+        if (checkSelfPermission(Manifest.permission.READ_CALL_LOG) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return null
+        return try {
+            contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                arrayOf(CallLog.Calls.DURATION),
+                "${CallLog.Calls.TYPE} = ? AND ${CallLog.Calls.DATE} >= ?",
+                arrayOf(CallLog.Calls.OUTGOING_TYPE.toString(), since.toString()),
+                "${CallLog.Calls.DATE} DESC",
+            )?.use { c -> if (c.moveToFirst()) c.getLong(0) > 0 else null }
+        } catch (e: SecurityException) {
+            null
         }
     }
 

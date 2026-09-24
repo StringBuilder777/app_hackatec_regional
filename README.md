@@ -99,6 +99,12 @@ altavoz**, y una **voz** (texto a voz, `flutter_tts`) explica lo que pasa
 - **A quién:** cada perfil guarda dirección, responsable y contacto de
   emergencia. Con "Yo soy el responsable" se llama a tu contacto de emergencia;
   si no, al responsable. Un perfil pausado no llama.
+- **Si nadie contesta:** al colgar, la app lee el registro de llamadas
+  (permiso `READ_CALL_LOG`); si la llamada duró 0 s, marca al número de
+  **Emergencias** del perfil (para la demo, el de un compañero) y la voz dice
+  quién no contestó, la dirección y pide ayuda. Un buzón de voz cuenta como
+  contestada: en la demo, **rechaza** la llamada para simular que no contestan.
+- **Simular alerta** siempre simula la caída (la alerta de la demo).
 - **Qué dice:** al responsable, *"Hola, Ana. Te llamo de Sense Care. Luis tuvo
   un accidente: se cayó. ¿Puedes llegar para ayudarle? Si no puedes, llama a
   emergencias al 911."*; al contacto de emergencia, *"Luis Emilio Pérez se
